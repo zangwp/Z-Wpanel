@@ -13,7 +13,7 @@ func TestCloudflareInstallEntryVerifiesPinnedRelease(t *testing.T) {
 	}
 	worker := string(workerBytes)
 	for _, required := range []string{
-		`const RELEASE_VERSION = "v2.2.1"`,
+		`const RELEASE_VERSION = "v2.2.2"`,
 		`https://github.com/zangwp/Z-Wpanel/releases/download/${RELEASE_VERSION}`,
 		`const BOOTSTRAP_NAME = "bootstrap.sh"`,
 		`MCowBQYDK2VwAyEA0jnZ48kP288D+aZkeQnquJZADGErVCWn66TdL7IlmHc=`,
@@ -43,6 +43,29 @@ func TestCloudflareInstallEntryVerifiesPinnedRelease(t *testing.T) {
 	serve := strings.Index(worker, "return script;")
 	if verify < 0 || hash < 0 || serve < 0 || !(verify < hash && hash < serve) {
 		t.Fatalf("Cloudflare bootstrap verification order is invalid: signature=%d hash=%d serve=%d", verify, hash, serve)
+	}
+}
+
+func TestReadmesPromoteShortInstallerBeforeMinimalImageFallback(t *testing.T) {
+	const shortCommand = "curl -fsSL https://wpanel.zangyubin.top/install | bash"
+	const compatibilityCommand = "apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl"
+	for _, path := range []string{"README.md", "README.en.md"} {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		readme := strings.ReplaceAll(string(contents), "\r\n", "\n")
+		short := strings.Index(readme, "```bash\n"+shortCommand+"\n```")
+		fallback := strings.Index(readme, compatibilityCommand)
+		if short < 0 {
+			t.Errorf("%s does not prominently show the short installer", path)
+		}
+		if fallback < 0 {
+			t.Errorf("%s does not document the minimal-image compatibility command", path)
+		}
+		if short >= 0 && fallback >= 0 && short >= fallback {
+			t.Errorf("%s shows the compatibility command before the short installer", path)
+		}
 	}
 }
 

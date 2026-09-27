@@ -81,9 +81,8 @@ ensure_bootstrap_dependencies() {
         packages+=(ca-certificates)
     fi
     command -v openssl >/dev/null 2>&1 || packages+=(openssl)
-    if ! command -v wget >/dev/null 2>&1 && ! command -v curl >/dev/null 2>&1; then
-        packages+=(curl)
-    fi
+    command -v wget >/dev/null 2>&1 || packages+=(wget)
+    command -v curl >/dev/null 2>&1 || packages+=(curl)
     command -v awk >/dev/null 2>&1 || packages+=(mawk)
     command -v grep >/dev/null 2>&1 || packages+=(grep)
     for required_cmd in chmod head install mktemp rm sha256sum stat timeout tr wc; do

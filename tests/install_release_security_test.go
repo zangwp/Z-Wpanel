@@ -88,6 +88,8 @@ func TestCNBootstrapOnlyExecutesSignedReleaseInstaller(t *testing.T) {
 		`YUB WPanel 引导程序平台检查通过`,
 		`https://github.com/zangwp/Z-Wpanel/releases/download/${BOOTSTRAP_RELEASE_VERSION}/install.sh`,
 		`ensure_bootstrap_dependencies()`,
+		`command -v wget >/dev/null 2>&1 || packages+=(wget)`,
+		`command -v curl >/dev/null 2>&1 || packages+=(curl)`,
 		`apt-get install -y --no-install-recommends "${packages[@]}"`,
 		`export YUB_WPANEL_PREFER_CN_MIRROR=1`,
 		`export YUB_WPANEL_PREFER_CN_MIRROR=0`,

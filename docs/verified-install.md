@@ -16,13 +16,17 @@ Cross-check this key through an independent channel before trusting it. A valid 
 
 ## 快速入口 / Short entry
 
-首页短命令从 `wpanel.zangyubin.top` 获取固定到 `v2.2.1` 的引导脚本。Cloudflare Worker 会先验证该脚本的签名、哈希和内嵌版本，引导脚本再验证正式安装器。这比直接执行 GitHub `main` 更可靠，但首次执行仍信任域名、Cloudflare HTTPS、Worker 配置和内嵌公钥。要求在执行任何远程脚本前独立验签时，请使用下方标准安装方式。
+首页短命令从 `wpanel.zangyubin.top` 获取固定到 `v2.2.2` 的引导脚本。Cloudflare Worker 会先验证该脚本的签名、哈希和内嵌版本，引导脚本再验证正式安装器。这比直接执行 GitHub `main` 更可靠，但首次执行仍信任域名、Cloudflare HTTPS、Worker 配置和内嵌公钥。要求在执行任何远程脚本前独立验签时，请使用下方标准安装方式。
 
-The homepage command fetches a `v2.2.1`-pinned bootstrap through `wpanel.zangyubin.top`. The Cloudflare Worker verifies its signature, digest, and embedded release identity before returning it, and the bootstrap then verifies the main installer. This is safer than executing GitHub `main`, but the first execution still trusts the domain, Cloudflare HTTPS, Worker configuration, and pinned public key. Use the standard procedure below when every remote script must be verified before execution.
+The homepage command fetches a `v2.2.2`-pinned bootstrap through `wpanel.zangyubin.top`. The Cloudflare Worker verifies its signature, digest, and embedded release identity before returning it, and the bootstrap then verifies the main installer. This is safer than executing GitHub `main`, but the first execution still trusts the domain, Cloudflare HTTPS, Worker configuration, and pinned public key. Use the standard procedure below when every remote script must be verified before execution.
 
 ```bash
-apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl && (set -o pipefail; curl -fsSL --proto '=https' --proto-redir '=https' https://wpanel.zangyubin.top/install | bash)
+curl -fsSL https://wpanel.zangyubin.top/install | bash
 ```
+
+极简镜像若没有 `curl`，请先运行 `apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl`，再执行上面的短命令。引导脚本开始运行后也会自动检查并补装缺失的下载、证书和验签依赖。
+
+On a minimal image without `curl`, first run `apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl`, then use the short command above. Once running, the bootstrap also checks and installs missing download, certificate, and signature-verification dependencies.
 
 ## 标准安装 / Standard installation
 
@@ -39,7 +43,7 @@ apt-get install -y wget ca-certificates openssl
   trap 'rm -rf -- "$workdir"' EXIT
   cd "$workdir"
 
-  version='v2.2.1'
+  version='v2.2.2'
   base="https://github.com/zangwp/Z-Wpanel/releases/download/$version"
   wget --no-config --https-only --no-hsts "$base/install.sh"
   wget --no-config --https-only --no-hsts "$base/install.sh.sha256"

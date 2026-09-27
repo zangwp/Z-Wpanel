@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.2 — 2026-09-27
+
+- Promoted the one-line `curl` command as the primary README installation path and moved the prerequisite-heavy command into minimal-image troubleshooting.
+- Made the signed bootstrap independently check and install missing `wget`, `curl`, CA certificates, OpenSSL, and other verification prerequisites before downloading the fixed-version installer.
+- Added regression coverage that keeps the short command prominent while retaining the documented fallback for stripped-down Debian and Ubuntu images.
+
 ## v2.2.1 — 2026-09-27
 
 - Simplified WordPress site creation and reinstall by removing the theme/plugin catalog, while keeping focused cleanup choices and an optional Redis Object Cache preparation step.

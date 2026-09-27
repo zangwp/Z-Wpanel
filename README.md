@@ -22,10 +22,18 @@ The full English project guide is available here: [README.en.md](README.en.md).
 > **支持范围：Debian 13 (Trixie) / Ubuntu 24.04 LTS (Noble)，amd64 / arm64。** 使用 `root` 用户执行：
 
 ```bash
-apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl && (set -o pipefail; curl -fsSL --proto '=https' --proto-redir '=https' https://wpanel.zangyubin.top/install | bash)
+curl -fsSL https://wpanel.zangyubin.top/install | bash
 ```
 
-这条命令兼容未预装下载与验签工具的 Debian/Ubuntu 精简镜像。短域名入口固定到已发布的 Release；Cloudflare Worker 会先验证 `bootstrap.sh` 的 Ed25519 签名和 SHA-256，引导脚本随后再次验签固定版本的 `install.sh`，最后才启动安装。它不会执行 GitHub `main` 分支上的可变脚本。
+短域名入口固定到已发布的 Release；Cloudflare Worker 会先验证 `bootstrap.sh` 的 Ed25519 签名和 SHA-256。脚本下载后会自动检查并补装 `wget`、`curl`、`ca-certificates`、`openssl` 等引导依赖，再次验签固定版本的 `install.sh`，最后才启动安装。它不会执行 GitHub `main` 分支上的可变脚本。
+
+### 极简系统 / 下载失败处理
+
+如果系统提示 `curl: command not found`、TLS/证书错误，或使用的是未预装下载与验签工具的精简镜像，请先执行完整兼容命令：
+
+```bash
+apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl && (set -o pipefail; curl -fsSL --proto '=https' --proto-redir '=https' https://wpanel.zangyubin.top/install | bash)
+```
 
 需要在执行任何远程脚本前自行验签，或进行国内网络、离线安装时，请使用 **[完整验签安装指南](docs/verified-install.md)**。
 
