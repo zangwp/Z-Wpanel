@@ -74,8 +74,7 @@ type CreateWebsiteRequest struct {
 	DocumentRootSubdir string   `json:"document_root_subdir"`
 	CleanDefaults      bool     `json:"clean_defaults"`
 	RemoveUnusedThemes bool     `json:"remove_unused_themes"`
-	InstallThemes      []string `json:"install_themes"`
-	InstallPlugins     []string `json:"install_plugins"`
+	EnableRedisCache   bool     `json:"enable_redis_cache"`
 }
 
 type UpdateWebsiteStatusRequest struct {

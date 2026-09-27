@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.1 — 2026-09-27
+
+- Simplified WordPress site creation and reinstall by removing the theme/plugin catalog, while keeping focused cleanup choices and an optional Redis Object Cache preparation step.
+- Removed the unused Extensions configuration page, API, and sidebar entry without deleting legacy database data during an in-place upgrade.
+- Clarified panel-managed jobs, read-only operating-system jobs, system WP-Cron replacement, automatic certificate renewal, the current Nginx/PHP-FPM/MariaDB/Redis stack, and the role of WP-CLI.
+- Added a persistent light/dark appearance switch, refreshed panel colors and controls, highlighted runtime versions, and added the project contact email to Help & Feedback.
+- Documented a minimal-image quick-install command that installs the download, certificate, and signature-verification prerequisites before fetching the signed bootstrap.
+
 ## v2.2.0 — 2026-09-27
 
 - Moved the canonical source, signed releases, update channel, issue links, and verified short installer to the clean `zangwp/Z-Wpanel` repository.

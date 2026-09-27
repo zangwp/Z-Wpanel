@@ -101,7 +101,7 @@
             <div x-data="versionCheck()" x-init="scheduleCheck()">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm text-gray-400">{{t .Lang "settings.panel_version"}}</span>
-                    <span class="text-sm text-white font-mono" x-text="currentVersion"></span>
+                    <span class="version-pill text-sm font-mono px-2 py-0.5" x-text="currentVersion"></span>
                 </div>
                 <div x-show="hasUpdate" class="mb-3 p-3 rounded" style="background-color: #064e3b; border: 1px solid #059669;">
                     <p class="text-sm text-green-300">{{t .Lang "settings.new_version_prefix"}} <span x-text="latestVersion" class="font-bold"></span> {{t .Lang "settings.new_version_suffix"}}</p>

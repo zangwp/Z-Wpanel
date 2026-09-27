@@ -30,7 +30,7 @@ var allowedCommands = map[string][]string{
 	"cp":              {"-r", "-a", "-f"},
 	"mv":              {},
 	"unzip":           {"-o", "-q", "-d"},
-	"wget":            {"-q", "-O", "-T", "-t"},
+	"wget":            {"-q", "-O", "-T", "-t", "--no-config", "--https-only", "--no-hsts"},
 	"curl":            {"-s", "-o", "-f", "-L", "-X", "-H", "-d"},
 	"runuser":         {"-u", "-g", "--"},
 	"mysql":           {"-u", "-p", "-e", "-h", "-P", "--execute", "--host", "--password", "--user"},

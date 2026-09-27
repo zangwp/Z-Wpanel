@@ -27,26 +27,13 @@
                 <span class="text-gray-300 text-sm">{{t .Lang "website.remove_unused_default_themes"}}</span>
             </label>
 
-            <div class="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                    <p class="text-xs text-gray-500 mb-2">{{t .Lang "website.install_themes"}}</p>
-                    <template x-for="t in reinstallModal.extensions.filter(e => e.etype === 'theme' && e.enabled)" :key="t.id">
-                        <label class="flex items-center space-x-2 cursor-pointer mb-1">
-                            <input type="checkbox" :value="t.slug" x-model="reinstallModal.installThemes" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-600">
-                            <span class="text-gray-300 text-xs" x-text="t.name"></span>
-                        </label>
-                    </template>
-                </div>
-                <div>
-                    <p class="text-xs text-gray-500 mb-2">{{t .Lang "website.install_plugins"}}</p>
-                    <template x-for="p in reinstallModal.extensions.filter(e => e.etype === 'plugin' && e.enabled)" :key="p.id">
-                        <label class="flex items-center space-x-2 cursor-pointer mb-1">
-                            <input type="checkbox" :value="p.slug" x-model="reinstallModal.installPlugins" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-600">
-                            <span class="text-gray-300 text-xs" x-text="p.name"></span>
-                        </label>
-                    </template>
-                </div>
-            </div>
+            <label class="flex items-start space-x-2 cursor-pointer mb-4">
+                <input type="checkbox" x-model="reinstallModal.enableRedisCache" class="w-4 h-4 mt-0.5 rounded border-gray-600 bg-gray-700 text-blue-600">
+                <span>
+                    <span class="block text-gray-300 text-sm">{{t .Lang "website.redis_object_cache"}}</span>
+                    <span class="block text-xs text-gray-500 mt-1">{{t .Lang "website.redis_object_cache_help"}}</span>
+                </span>
+            </label>
 
             <div class="flex justify-end space-x-3">
                 <button @click="reinstallModal.show = false" class="btn-secondary text-sm">{{t .Lang "website.cancel"}}</button>
@@ -129,11 +116,9 @@ function websiteList() {
         reinstallModal: {
             show: false,
             site: null,
-            extensions: [],
             cleanDefaults: true,
             removeUnusedThemes: true,
-            installThemes: [],
-            installPlugins: [],
+            enableRedisCache: true,
         },
         async fetchList() {
             try {
@@ -172,13 +157,7 @@ function websiteList() {
             this.reinstallModal.site = site;
             this.reinstallModal.cleanDefaults = true;
             this.reinstallModal.removeUnusedThemes = true;
-            this.reinstallModal.installThemes = [];
-            this.reinstallModal.installPlugins = [];
-            this.reinstallModal.extensions = [];
-            try {
-                const resp = await api('/extensions');
-                if (resp.success) this.reinstallModal.extensions = resp.data;
-            } catch(e) {}
+            this.reinstallModal.enableRedisCache = true;
             this.reinstallModal.show = true;
         },
         async doReinstallWP() {
@@ -191,8 +170,7 @@ function websiteList() {
                 if (site.site_type === 'wordpress') {
                     body.clean_defaults = this.reinstallModal.cleanDefaults;
                     body.remove_unused_themes = this.reinstallModal.removeUnusedThemes;
-                    body.install_themes = this.reinstallModal.installThemes;
-                    body.install_plugins = this.reinstallModal.installPlugins;
+                    body.enable_redis_cache = this.reinstallModal.enableRedisCache;
                 }
                 const resp = await api('/websites/' + site.id + '/reinstall-wp', { method: 'POST', body });
                 if (resp.success) {

@@ -117,28 +117,31 @@ func removeUnusedThemes(webRoot string) {
 	}
 }
 
-func installExtensions(webRoot, systemUser string, themes, plugins []string) {
-	for _, slug := range themes {
-		installZip(filepath.Join(webRoot, "wp-content", "themes"), slug, "theme")
+func installRedisCachePlugin(webRoot, systemUser string) error {
+	const packageURL = "https://downloads.wordpress.org/plugin/redis-cache.latest-stable.zip"
+	destDir := filepath.Join(webRoot, "wp-content", "plugins")
+	tmp, err := os.CreateTemp("", "yub-wpanel-redis-cache-*.zip")
+	if err != nil {
+		return fmt.Errorf("创建 Redis 插件临时文件失败: %w", err)
 	}
-	for _, slug := range plugins {
-		installZip(filepath.Join(webRoot, "wp-content", "plugins"), slug, "plugin")
+	zipPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(zipPath)
+		return fmt.Errorf("关闭 Redis 插件临时文件失败: %w", err)
 	}
-	if len(themes) > 0 || len(plugins) > 0 {
-		executeCommand("chown", "-R", siteOwner(systemUser),
-			filepath.Join(webRoot, "wp-content", "themes"),
-			filepath.Join(webRoot, "wp-content", "plugins"))
-	}
-}
-
-func installZip(destDir, slug, etype string) {
-	url := fmt.Sprintf("https://downloads.wordpress.org/%s/%s.latest-stable.zip", etype, slug)
-	zipPath := filepath.Join(os.TempDir(), fmt.Sprintf("wp_ext_%s_%s.zip", etype, slug))
 	defer os.Remove(zipPath)
 
-	if _, err := executeCommand("wget", "-q", "-T", "30", "-O", zipPath, url); err != nil {
-		return
+	if _, err := executeCommand("wget", "--no-config", "-q", "--https-only", "--no-hsts", "-T", "30", "-O", zipPath, packageURL); err != nil {
+		return fmt.Errorf("下载 Redis Object Cache 插件失败: %w", err)
 	}
-	os.MkdirAll(destDir, 0755)
-	executeCommand("unzip", "-q", "-o", zipPath, "-d", destDir)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("创建 WordPress 插件目录失败: %w", err)
+	}
+	if _, err := executeCommand("unzip", "-q", "-o", zipPath, "-d", destDir); err != nil {
+		return fmt.Errorf("解压 Redis Object Cache 插件失败: %w", err)
+	}
+	if _, err := executeCommand("chown", "-R", siteOwner(systemUser), filepath.Join(destDir, "redis-cache")); err != nil {
+		return fmt.Errorf("设置 Redis Object Cache 插件权限失败: %w", err)
+	}
+	return nil
 }

@@ -537,6 +537,13 @@
     "chinese": "中文",
     "english": "英文"
   },
+  "theme": {
+    "label": "外观",
+    "light": "切换到白天模式",
+    "dark": "切换到黑夜模式",
+    "switch_light": "切换到白天模式",
+    "switch_dark": "切换到黑夜模式"
+  },
   "dashboard": {
     "update_available": "发现新版本 {{version}}",
     "system_updates": "{{count}} 个系统更新",
@@ -578,7 +585,6 @@
     "files": "文件管理",
     "software": "软件管理",
     "alert": "告警通知",
-    "extensions": "扩展配置",
     "settings": "面板设置",
     "help": "帮助反馈",
     "logout": "退出登录"
@@ -670,28 +676,12 @@
     "webhook_url_help": "保存有效 URL 后自动启用；清空 URL 并保存即可停用。",
     "webhook_url_required": "请填写 Webhook URL"
   },
-  "extension": {
-    "query_failed": "查询失败",
-    "save_failed": "扩展配置保存失败，原配置未改变",
-    "delete_failed": "扩展删除失败，请刷新后重试",
-    "reset_failed": "恢复默认配置失败，原配置未改变",
-    "invalid_entry": "主题或插件信息不完整或重复",
-    "saved": "已保存",
-    "deleted": "已删除",
-    "restored_default": "已恢复默认配置",
-    "reset_confirm": "将恢复为默认主题和插件列表，当前配置将被覆盖。确认？",
-    "description": "新建 WordPress 网站时默认可选安装的主题和插件列表。已启用的项目将在建站页面中默认勾选。",
-    "reset_defaults": "一键恢复默认配置",
-    "themes": "主题",
-    "plugins": "插件",
-    "name": "名称",
-    "enabled": "启用",
-    "delete": "删除",
-    "add_theme": "+ 添加主题",
-    "add_plugin": "+ 添加插件",
-    "save_config": "保存配置"
-  },
   "cron": {
+    "panel_jobs_title": "面板任务",
+    "panel_jobs_help": "这里创建的任务由 YUB WPanel 写入受管 Cron 文件，可启停、立即执行并记录结果。",
+    "wp_cron_summary": "选择“WP Cron 调用”后，面板会禁用访问触发的伪 Cron，并默认每 5 分钟由系统调用。",
+    "ssl_renewal_title": "证书自动续期",
+    "ssl_renewal_help": "面板每天凌晨 3 点检查自动签发的证书，并在到期前 30 天尝试续签；手动证书不会自动续签。",
     "view_logs": "查看日志",
     "create_job": "创建任务",
     "job_name": "任务名称",
@@ -709,6 +699,7 @@
     "no_jobs": "暂无任务",
     "system_jobs": "系统任务",
     "readonly": "（只读）",
+    "system_jobs_help": "以下是操作系统或软件包自带的任务，仅用于查看。不要把它们误认为 WP-CLI 或面板任务。",
     "source": "来源",
     "user": "用户",
     "command": "命令",
@@ -780,7 +771,9 @@
     "status_disabled": "禁用",
     "status_enabled": "启用",
     "task_type_command": "自定义命令",
-    "task_type_file_backup": "文件备份"
+    "task_type_file_backup": "文件备份",
+    "task_type_wp_cron": "系统 WP-Cron",
+    "wp_cron_target": "调用 {{domain}}/wp-cron.php"
   },
   "ai_development": {
     "title": "AI 开发访问",
@@ -839,6 +832,10 @@
     "operation_blocked": "当前网站已开启 AI 开发访问，请先在网站详情中关闭授权后再执行此操作"
   },
   "software": {
+    "runtime_stack": "当前网站运行栈",
+    "php_version_policy": "PHP 版本策略",
+    "php_version_policy_help": "当前稳定支持 PHP 8.3；下方可调整内存、上传、执行时间与 OPcache 等参数。",
+    "wp_cli_not_cron": "WordPress 命令行管理工具，不是系统定时任务。定时任务请在“计划任务”中创建。",
     "unknown_software": "未知软件",
     "log_empty_or_unreadable": "日志为空或无法读取",
     "clear_failed": "清空日志失败",
@@ -1754,13 +1751,11 @@
     "expiry_optional": "网站到期时间（可选）",
     "expiry_help": "留空则永不到期。到期前14天/7天/1天通过告警邮件提醒。",
     "enable_free_ssl": "同时申请免费 Let's Encrypt SSL 证书",
-    "wp_install_options": "WordPress 安装选项",
+    "wp_initialization": "WordPress 初始化",
     "clean_default_plugins": "自动清理默认插件（Akismet + Hello Dolly）",
     "remove_unused_default_themes": "删除未使用的默认主题（Twenty Twenty-Four / Twenty Twenty-Three）",
-    "install_themes": "安装主题",
-    "install_plugins": "安装插件",
-    "no_enabled_themes": "暂无已启用的主题，去「扩展配置」添加",
-    "no_enabled_plugins": "暂无已启用的插件，去「扩展配置」添加",
+    "redis_object_cache": "准备 Redis 对象缓存插件（推荐）",
+    "redis_object_cache_help": "服务器 Redis 与 PHP Redis 扩展已由安装器部署；这里下载 WordPress Redis Object Cache 插件，完成 WordPress 初始化后仍需在后台启用并连接。",
     "view_site_handle_ssl": "查看站点并处理 SSL",
     "create_site": "创建网站",
     "creating_site": "正在创建...",
@@ -2093,7 +2088,9 @@
     "intro": "遇到问题或有建议？请通过 GitHub Issues 反馈。",
     "github_title": "GitHub Issues",
     "github_desc": "在 GitHub 提交 Issue，报告 Bug 或提出功能建议。",
-    "github_action": "提交 Issue"
+    "github_action": "提交 Issue",
+    "email_title": "电子邮件",
+    "email_desc": "涉及隐私、日志或不适合公开发布的信息，可以通过邮件联系。"
   },
   "settings": {
     "account_security": "账户安全",

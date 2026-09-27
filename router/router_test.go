@@ -36,7 +36,6 @@ var pageTemplates = map[string]string{
 	"security.html":               "security_content",
 	"settings.html":               "settings_content",
 	"alert.html":                  "alert_content",
-	"extension.html":              "extensions_content",
 	"software.html":               "software_content",
 	"help.html":                   "help_content",
 }
@@ -211,7 +210,7 @@ func TestContentTemplatesRender(t *testing.T) {
 		"dashboard_content", "websites_content", "site_migration_content", "wordpress_overview_content", "websites_new_content",
 		"websites_detail_content", "wordpress_site_detail_content", "databases_content", "database_detail_content", "ai_diagnostics_content", "log_analysis_content", "cron_content", "backups_content", "remote_backup_settings_content", "firewall_content",
 		"files_content", "security_content", "settings_content",
-		"alert_content", "extensions_content", "software_content", "help_content",
+		"alert_content", "software_content", "help_content",
 	}
 	for _, content := range contents {
 		t.Run(content, func(t *testing.T) {
@@ -1585,7 +1584,6 @@ func TestSidebarNavigationOrder(t *testing.T) {
 		[]byte(`href="/{{$.RandomSuffix}}/software"`),
 		[]byte(`href="/{{$.RandomSuffix}}/alert"`),
 		[]byte(`href="/{{$.RandomSuffix}}/ai-diagnostics"`),
-		[]byte(`href="/{{$.RandomSuffix}}/extensions"`),
 		[]byte(`href="/{{$.RandomSuffix}}/settings"`),
 		[]byte(`href="/{{$.RandomSuffix}}/help"`),
 	}
@@ -1596,6 +1594,60 @@ func TestSidebarNavigationOrder(t *testing.T) {
 			t.Fatalf("sidebar item %s is missing or out of order", item)
 		}
 		previous = position
+	}
+}
+
+func TestBaseProvidesPersistentLightDarkThemeToggle(t *testing.T) {
+	source, err := os.ReadFile("../templates/base.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range [][]byte{
+		[]byte(`/css/theme.css`),
+		[]byte(`localStorage.getItem('yub-wpanel-theme')`),
+		[]byte(`localStorage.setItem('yub-wpanel-theme'`),
+		[]byte(`@click="toggleTheme()"`),
+	} {
+		if !bytes.Contains(source, required) {
+			t.Fatalf("base theme support is missing %q", required)
+		}
+	}
+	if bytes.Contains(source, []byte(`href="/{{$.RandomSuffix}}/extensions"`)) {
+		t.Fatal("removed extension configuration still appears in the sidebar")
+	}
+}
+
+func TestWebsiteCreationUsesFocusedRedisOptionWithoutExtensionCatalog(t *testing.T) {
+	for _, path := range []string{"../templates/website_new.html", "../templates/websites.html"} {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(source, []byte(`enable_redis_cache`)) {
+			t.Fatalf("%s is missing the focused Redis cache option", path)
+		}
+		for _, forbidden := range [][]byte{[]byte(`api('/extensions')`), []byte(`website.install_themes`), []byte(`website.install_plugins`)} {
+			if bytes.Contains(source, forbidden) {
+				t.Fatalf("%s still contains removed extension catalog UI %q", path, forbidden)
+			}
+		}
+	}
+}
+
+func TestCronPageExplainsManagedAndAutomaticTasks(t *testing.T) {
+	source, err := os.ReadFile("../templates/cron.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range [][]byte{
+		[]byte(`cron.system_jobs_help`),
+		[]byte(`cron.ssl_renewal_help`),
+		[]byte(`cron.task_type_wp_cron`),
+		[]byte(`this.form.cron_expression = '*/5 * * * *'`),
+	} {
+		if !bytes.Contains(source, required) {
+			t.Fatalf("cron guidance is missing %q", required)
+		}
 	}
 }
 

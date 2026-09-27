@@ -526,8 +526,7 @@ func (h *WebsiteHandler) Create(c *gin.Context) {
 		DocumentRootSubdir: documentRootSubdir,
 		CleanDefaults:      req.CleanDefaults,
 		RemoveUnusedThemes: req.RemoveUnusedThemes,
-		InstallThemes:      req.InstallThemes,
-		InstallPlugins:     req.InstallPlugins,
+		EnableRedisCache:   req.EnableRedisCache,
 	}
 
 	task, queued := enqueueTask(c, executor.TaskCreateSite, payload)
@@ -2859,15 +2858,14 @@ func (h *WebsiteHandler) ReinstallWordPress(c *gin.Context) {
 	cfg := config.AppConfig
 
 	var req struct {
-		CleanDefaults      bool     `json:"clean_defaults"`
-		RemoveUnusedThemes bool     `json:"remove_unused_themes"`
-		InstallThemes      []string `json:"install_themes"`
-		InstallPlugins     []string `json:"install_plugins"`
+		CleanDefaults      bool `json:"clean_defaults"`
+		RemoveUnusedThemes bool `json:"remove_unused_themes"`
+		EnableRedisCache   bool `json:"enable_redis_cache"`
 	}
 	c.ShouldBindJSON(&req)
 
 	if err := executor.ReinstallWordPress(c.Request.Context(), webRoot, dbName, dbUser, systemUser, cfg,
-		req.CleanDefaults, req.RemoveUnusedThemes, req.InstallThemes, req.InstallPlugins); err != nil {
+		req.CleanDefaults, req.RemoveUnusedThemes, req.EnableRedisCache); err != nil {
 		log.Printf("WordPress 重装失败 site=%d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(reinstallWordPressErrorMessage(err)))
 		return

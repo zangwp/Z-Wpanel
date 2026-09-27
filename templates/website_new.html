@@ -1,6 +1,6 @@
 {{template "base" .}}
 {{define "websites_new_content"}}
-<div x-data="createWebsite()" x-init="init()">
+<div x-data="createWebsite()">
     <h2 class="text-xl font-bold text-white mb-6">{{t .Lang "website.create_title"}}</h2>
     <div class="card max-w-2xl">
         <form @submit.prevent="submit">
@@ -54,40 +54,25 @@
             </div>
 
             <div x-show="siteType === 'wordpress'" class="mb-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                <h3 class="text-sm font-semibold text-gray-300 mb-3">{{t .Lang "website.wp_install_options"}}</h3>
+                <h3 class="text-sm font-semibold text-gray-300 mb-3">{{t .Lang "website.wp_initialization"}}</h3>
 
                 <label class="flex items-center space-x-2 cursor-pointer mb-3">
                     <input type="checkbox" x-model="cleanDefaults" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500">
                     <span class="text-gray-300 text-sm">{{t .Lang "website.clean_default_plugins"}}</span>
                 </label>
 
-                <label class="flex items-center space-x-2 cursor-pointer mb-4">
+                <label class="flex items-center space-x-2 cursor-pointer mb-3">
                     <input type="checkbox" x-model="removeUnusedThemes" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500">
                     <span class="text-gray-300 text-sm">{{t .Lang "website.remove_unused_default_themes"}}</span>
                 </label>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <p class="text-xs text-gray-500 mb-2">{{t .Lang "website.install_themes"}}</p>
-                        <template x-for="t in enabledThemes" :key="t.id">
-                            <label class="flex items-center space-x-2 cursor-pointer mb-1">
-                                <input type="checkbox" :value="t.slug" x-model="installThemes" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-600">
-                                <span class="text-gray-300 text-xs" x-text="t.name"></span>
-                            </label>
-                        </template>
-                        <p x-show="enabledThemes.length === 0" class="text-xs text-gray-600">{{t .Lang "website.no_enabled_themes"}}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-gray-500 mb-2">{{t .Lang "website.install_plugins"}}</p>
-                        <template x-for="p in enabledPlugins" :key="p.id">
-                            <label class="flex items-center space-x-2 cursor-pointer mb-1">
-                                <input type="checkbox" :value="p.slug" x-model="installPlugins" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-600">
-                                <span class="text-gray-300 text-xs" x-text="p.name"></span>
-                            </label>
-                        </template>
-                        <p x-show="enabledPlugins.length === 0" class="text-xs text-gray-600">{{t .Lang "website.no_enabled_plugins"}}</p>
-                    </div>
-                </div>
+                <label class="flex items-start space-x-2 cursor-pointer">
+                    <input type="checkbox" x-model="enableRedisCache" class="w-4 h-4 mt-0.5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500">
+                    <span>
+                        <span class="block text-gray-300 text-sm">{{t .Lang "website.redis_object_cache"}}</span>
+                        <span class="block text-xs text-gray-500 mt-1">{{t .Lang "website.redis_object_cache_help"}}</span>
+                    </span>
+                </label>
             </div>
 
             <div x-show="error" class="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm"
@@ -118,29 +103,12 @@ function createWebsite() {
         documentRootSubdir: '',
         cleanDefaults: true,
         removeUnusedThemes: true,
-        extensions: [],
-        installThemes: [],
-        installPlugins: [],
+        enableRedisCache: true,
         loading: false,
         error: '',
         success: '',
         sslWarning: '',
         createdSiteID: null,
-        init() {
-            this.loadExtensions();
-        },
-        get enabledThemes() { return this.extensions.filter(e => e.etype === 'theme' && e.enabled); },
-        get enabledPlugins() { return this.extensions.filter(e => e.etype === 'plugin' && e.enabled); },
-        async loadExtensions() {
-            try {
-                const resp = await api('/extensions');
-                if (resp.success) {
-                    this.extensions = resp.data;
-                    const redisPlugin = resp.data.find(e => e.etype === 'plugin' && e.slug === 'redis-cache' && e.enabled);
-                    if (redisPlugin) this.installPlugins = ['redis-cache'];
-                }
-            } catch(e) {}
-        },
         generatePassword() {
             const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
             let pw = '';
@@ -185,8 +153,7 @@ function createWebsite() {
                 if (this.siteType === 'wordpress') {
                     body.clean_defaults = this.cleanDefaults;
                     body.remove_unused_themes = this.removeUnusedThemes;
-                    body.install_themes = this.installThemes;
-                    body.install_plugins = this.installPlugins;
+                    body.enable_redis_cache = this.enableRedisCache;
                 }
                 if (!await this.confirmSSLPreflight(body)) return;
                 const resp = await api('/websites', { method: 'POST', body });

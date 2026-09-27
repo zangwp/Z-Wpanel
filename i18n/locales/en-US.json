@@ -537,6 +537,13 @@
     "chinese": "Chinese",
     "english": "English"
   },
+  "theme": {
+    "label": "Appearance",
+    "light": "Switch to light mode",
+    "dark": "Switch to dark mode",
+    "switch_light": "Switch to light mode",
+    "switch_dark": "Switch to dark mode"
+  },
   "dashboard": {
     "update_available": "New version {{version}}",
     "system_updates": "{{count}} system updates",
@@ -578,7 +585,6 @@
     "files": "Files",
     "software": "Software",
     "alert": "Alerts",
-    "extensions": "Extensions",
     "settings": "Settings",
     "help": "Help & Feedback",
     "logout": "Log out"
@@ -670,28 +676,12 @@
     "webhook_url_help": "Saving a valid URL enables Webhook automatically. Clear the URL and save to disable it.",
     "webhook_url_required": "Please enter webhook URL"
   },
-  "extension": {
-    "query_failed": "Query failed",
-    "save_failed": "Could not save extension settings; the previous settings were preserved",
-    "delete_failed": "Could not delete the extension; refresh and try again",
-    "reset_failed": "Could not restore defaults; the previous settings were preserved",
-    "invalid_entry": "Theme or plugin information is incomplete or duplicated",
-    "saved": "Saved",
-    "deleted": "Deleted",
-    "restored_default": "Default configuration restored",
-    "reset_confirm": "Restore the default themes and plugins list? Current configuration will be overwritten. Continue?",
-    "description": "Default themes and plugins available when creating a new WordPress site. Enabled items are checked by default on the site creation page.",
-    "reset_defaults": "Restore Default Configuration",
-    "themes": "Themes",
-    "plugins": "Plugins",
-    "name": "Name",
-    "enabled": "Enabled",
-    "delete": "Delete",
-    "add_theme": "+ Add Theme",
-    "add_plugin": "+ Add Plugin",
-    "save_config": "Save Configuration"
-  },
   "cron": {
+    "panel_jobs_title": "Panel-managed jobs",
+    "panel_jobs_help": "Jobs created here are written to the YUB WPanel managed cron file and can be paused, run immediately, and audited.",
+    "wp_cron_summary": "Selecting WP Cron disables request-triggered pseudo-cron and schedules a system call every five minutes by default.",
+    "ssl_renewal_title": "Automatic certificate renewal",
+    "ssl_renewal_help": "The panel checks automatically issued certificates at 03:00 daily and renews them within 30 days of expiry. Manual certificates are not renewed.",
     "view_logs": "View Logs",
     "create_job": "Create Job",
     "job_name": "Job Name",
@@ -709,6 +699,7 @@
     "no_jobs": "No jobs",
     "system_jobs": "System Jobs",
     "readonly": "(read-only)",
+    "system_jobs_help": "These jobs belong to the operating system or installed packages and are shown for inspection only. They are not WP-CLI or panel-managed jobs.",
     "source": "Source",
     "user": "User",
     "command": "Command",
@@ -780,7 +771,9 @@
     "status_disabled": "Disabled",
     "status_enabled": "Enabled",
     "task_type_command": "Custom command",
-    "task_type_file_backup": "File backup"
+    "task_type_file_backup": "File backup",
+    "task_type_wp_cron": "System WP-Cron",
+    "wp_cron_target": "Call {{domain}}/wp-cron.php"
   },
   "ai_development": {
     "title": "AI Development Access",
@@ -839,6 +832,10 @@
     "operation_blocked": "AI development access is active for this site. Disable it from the website details page before continuing."
   },
   "software": {
+    "runtime_stack": "Current web stack",
+    "php_version_policy": "PHP version policy",
+    "php_version_policy_help": "PHP 8.3 is the currently supported runtime. Memory, uploads, execution time, and OPcache can be tuned below.",
+    "wp_cli_not_cron": "A WordPress command-line administration tool, not a scheduled task. Create scheduled work under Cron Jobs.",
     "unknown_software": "Unknown software",
     "log_empty_or_unreadable": "The log is empty or cannot be read",
     "clear_failed": "Failed to clear log",
@@ -1656,13 +1653,11 @@
     "expiry_optional": "Site Expiration Date (optional)",
     "expiry_help": "Leave blank for no expiration. Alert emails are sent 14 days, 7 days, and 1 day before expiration.",
     "enable_free_ssl": "Request a free Let's Encrypt SSL certificate at the same time",
-    "wp_install_options": "WordPress Installation Options",
+    "wp_initialization": "WordPress Initialization",
     "clean_default_plugins": "Automatically remove default plugins (Akismet + Hello Dolly)",
     "remove_unused_default_themes": "Remove unused default themes (Twenty Twenty-Four / Twenty Twenty-Three)",
-    "install_themes": "Install Themes",
-    "install_plugins": "Install Plugins",
-    "no_enabled_themes": "No enabled themes. Add them in Extensions.",
-    "no_enabled_plugins": "No enabled plugins. Add them in Extensions.",
+    "redis_object_cache": "Prepare Redis object-cache plugin (recommended)",
+    "redis_object_cache_help": "The installer already deploys Redis and the PHP Redis extension. This downloads the WordPress Redis Object Cache plugin; enable and connect it after completing WordPress setup.",
     "view_site_handle_ssl": "View Site and Handle SSL",
     "create_site": "Create Site",
     "creating_site": "Creating...",
@@ -2093,7 +2088,9 @@
     "intro": "Running into a problem or have a suggestion? Please use GitHub Issues.",
     "github_title": "GitHub Issues",
     "github_desc": "File an issue on GitHub to report a bug or request a feature.",
-    "github_action": "Open an Issue"
+    "github_action": "Open an Issue",
+    "email_title": "Email",
+    "email_desc": "For private logs or information that should not be posted publicly, contact the project by email."
   },
   "settings": {
     "account_security": "Account Security",

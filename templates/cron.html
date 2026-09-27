@@ -9,6 +9,23 @@
         </div>
     </div>
 
+    <div class="info-strip p-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+                <p class="text-white font-semibold mb-1">{{t .Lang "cron.panel_jobs_title"}}</p>
+                <p class="text-gray-400 text-xs">{{t .Lang "cron.panel_jobs_help"}}</p>
+            </div>
+            <div>
+                <p class="text-white font-semibold mb-1">{{t .Lang "cron.wp_cron_replace_title"}}</p>
+                <p class="text-gray-400 text-xs">{{t .Lang "cron.wp_cron_summary"}}</p>
+            </div>
+            <div>
+                <p class="text-white font-semibold mb-1">{{t .Lang "cron.ssl_renewal_title"}}</p>
+                <p class="text-gray-400 text-xs">{{t .Lang "cron.ssl_renewal_help"}}</p>
+            </div>
+        </div>
+    </div>
+
     <div class="card">
         <div class="overflow-x-auto">
             <table class="w-full">
@@ -28,8 +45,8 @@
                         <tr class="border-b border-gray-700/50">
                             <td class="table-cell font-medium" x-text="displayJobName(job)"></td>
                             <td class="table-cell text-xs whitespace-nowrap" x-text="displaySchedule(job.cron_expression)"></td>
-                            <td class="table-cell text-xs" x-text="job.task_type === 'file_backup' ? t('cron.task_type_file_backup') : t('cron.task_type_command')"></td>
-                            <td class="table-cell font-mono text-xs max-w-[200px] truncate" x-text="job.task_type === 'file_backup' ? (job.backup_mode === 'full' ? t('cron.full_backup') : t('cron.smart_incremental')) : job.command"></td>
+                            <td class="table-cell text-xs" x-text="taskTypeLabel(job)"></td>
+                            <td class="table-cell font-mono text-xs max-w-[200px] truncate" x-text="taskContent(job)"></td>
                             <td class="table-cell">
                                 <span :class="job.runtime_suspended ? 'badge-warning' : (job.enabled ? 'badge-success' : 'badge-warning')"
                                       x-text="job.runtime_reason === 'migration_locked' ? t('cron.status_migration_locked') : (job.runtime_reason === 'paused' ? t('cron.status_site_paused') : (job.enabled ? t('cron.status_enabled') : t('cron.status_disabled')))"></span>
@@ -53,7 +70,8 @@
     </div>
 
     <div class="card mt-6" x-data="{ sysJobs: [] }" x-init="fetchSysCron()">
-        <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "cron.system_jobs"}} <span class="text-xs text-gray-500 font-normal">{{t .Lang "cron.readonly"}}</span></h3>
+        <h3 class="text-lg font-semibold text-white mb-1">{{t .Lang "cron.system_jobs"}} <span class="text-xs text-gray-500 font-normal">{{t .Lang "cron.readonly"}}</span></h3>
+        <p class="text-xs text-gray-500 mb-4">{{t .Lang "cron.system_jobs_help"}}</p>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="border-b border-gray-700 text-gray-400">
@@ -104,7 +122,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="label">{{t .Lang "cron.task_type"}}</label>
-                    <select x-model="form.task_type" class="input-field" @change="onTaskTypeChange">
+                    <select x-model="form.task_type" class="input-field" @change="onTaskTypeChange(true)">
                         <option value="command">{{t .Lang "cron.custom_command"}}</option>
                         <option value="file_backup">{{t .Lang "cron.backup_site_files"}}</option>
                         <option value="wp_cron">{{t .Lang "cron.wp_cron_call"}}</option>
@@ -170,7 +188,7 @@
                     </select>
                     <input type="text" x-model="form.cron_expression" class="input-field mt-1" placeholder="{{t .Lang "cron.cron_expression_placeholder"}}">
                 </div>
-                <div x-show="form.task_type !== 'file_backup'" class="mb-3">
+                <div x-show="form.task_type === 'command'" class="mb-3">
                     <label class="label">{{t .Lang "cron.run_command"}}</label>
                     <textarea x-model="form.command" class="input-field" rows="3" placeholder="{{t .Lang "cron.command_placeholder"}}"></textarea>
                 </div>
@@ -211,7 +229,18 @@ function cronManager() {
             const label = job.backup_mode === 'full' ? t('cron.full_backup') : t('cron.incremental_backup');
             return '[' + label + '] ' + match[1];
         },
+        taskTypeLabel(job) {
+            if (job.task_type === 'file_backup') return t('cron.task_type_file_backup');
+            if (job.task_type === 'wp_cron') return t('cron.task_type_wp_cron');
+            return t('cron.task_type_command');
+        },
+        taskContent(job) {
+            if (job.task_type === 'file_backup') return job.backup_mode === 'full' ? t('cron.full_backup') : t('cron.smart_incremental');
+            if (job.task_type === 'wp_cron') return t('cron.wp_cron_target', { domain: job.runtime_site_domain || job.command || '--' });
+            return job.command;
+        },
         displaySchedule(expression) {
+            if (expression === '*/5 * * * *') return t('cron.every_5_minutes');
             const fields = String(expression || '').trim().split(/\s+/);
             if (fields.length !== 5 || !/^\d+$/.test(fields[0]) || !/^\d+$/.test(fields[1])) return expression;
             const minute = Number(fields[0]);
@@ -227,8 +256,9 @@ function cronManager() {
             if (fields[3] === '1,4,7,10' && fields[4] === '*' && /^\d+$/.test(fields[2])) return t('cron.schedule_quarterly', { day: fields[2], time });
             return expression;
         },
-        onTaskTypeChange() {
+        onTaskTypeChange(fromUser = false) {
             if ((this.form.task_type === "file_backup" || this.form.task_type === "wp_cron") && !this.sites.length) this.fetchSites();
+            if (fromUser && this.form.task_type === 'wp_cron' && !this.form.cron_expression) this.form.cron_expression = '*/5 * * * *';
         },
         async fetchList() {
             try { const r = await api('/cron'); if (r.success) this.jobs = r.data || []; } catch(e) {}
@@ -241,7 +271,7 @@ function cronManager() {
         openEdit(job) {
             this.editingId = job.id;
             this.form = { name: job.name, cron_expression: job.cron_expression, command: job.command || '', task_type: job.task_type || 'command', backup_mode: job.backup_mode || 'incremental', keep_count: job.keep_count || 3, site_id: job.site_id || '', notify_fail: !!job.notify_fail };
-            this.onTaskTypeChange();
+            this.onTaskTypeChange(false);
             this.showModal = true;
         },
         async saveJob() {

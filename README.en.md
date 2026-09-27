@@ -18,12 +18,12 @@ If you want the Chinese project README, see [README.md](README.md).
 > **Supported targets: Debian 13 (Trixie) and Ubuntu 24.04 LTS (Noble), on amd64 or arm64.** Run as `root`:
 
 ```bash
-bash <(curl -fsSL https://wpanel.zangyubin.top/install)
+apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl && (set -o pipefail; curl -fsSL --proto '=https' --proto-redir '=https' https://wpanel.zangyubin.top/install | bash)
 ```
 
-The short domain is pinned to the `v2.2.0` Release. Its Cloudflare Worker verifies the Ed25519 signature and SHA-256 digest of `bootstrap.sh`; the bootstrap installs missing prerequisites, verifies the fixed-version `install.sh` again, and only then starts the installer. It never executes a mutable script from GitHub `main`.
+The command also works on minimal Debian/Ubuntu images without preinstalled download or verification tools. The short domain is pinned to a published Release. Its Cloudflare Worker verifies the Ed25519 signature and SHA-256 digest of `bootstrap.sh`; the bootstrap verifies the fixed-version `install.sh` again and only then starts the installer. It never executes a mutable script from GitHub `main`.
 
-If `curl` is not installed, first run `apt-get update && apt-get install -y curl`. Use the **[complete verified installation guide](docs/verified-install.md)** when you need to verify every remote script before execution, or for China-friendly and offline installation paths.
+Use the **[complete verified installation guide](docs/verified-install.md)** when you need to verify every remote script before execution, or for China-friendly and offline installation paths.
 
 ## Positioning
 

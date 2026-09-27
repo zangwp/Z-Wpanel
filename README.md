@@ -22,12 +22,12 @@ The full English project guide is available here: [README.en.md](README.en.md).
 > **支持范围：Debian 13 (Trixie) / Ubuntu 24.04 LTS (Noble)，amd64 / arm64。** 使用 `root` 用户执行：
 
 ```bash
-bash <(curl -fsSL https://wpanel.zangyubin.top/install)
+apt-get update && apt-get install -y --no-install-recommends curl wget ca-certificates openssl && (set -o pipefail; curl -fsSL --proto '=https' --proto-redir '=https' https://wpanel.zangyubin.top/install | bash)
 ```
 
-短域名入口固定到 `v2.2.0` Release。Cloudflare Worker 会先验证 `bootstrap.sh` 的 Ed25519 签名和 SHA-256；引导脚本随后安装缺少的基础依赖，再次验签固定版本的 `install.sh`，最后才启动安装。它不会执行 GitHub `main` 分支上的可变脚本。
+这条命令兼容未预装下载与验签工具的 Debian/Ubuntu 精简镜像。短域名入口固定到已发布的 Release；Cloudflare Worker 会先验证 `bootstrap.sh` 的 Ed25519 签名和 SHA-256，引导脚本随后再次验签固定版本的 `install.sh`，最后才启动安装。它不会执行 GitHub `main` 分支上的可变脚本。
 
-系统尚未安装 `curl` 时，先执行 `apt-get update && apt-get install -y curl`。需要在执行任何远程脚本前自行验签，或进行国内网络、离线安装时，请使用 **[完整验签安装指南](docs/verified-install.md)**。
+需要在执行任何远程脚本前自行验签，或进行国内网络、离线安装时，请使用 **[完整验签安装指南](docs/verified-install.md)**。
 
 ## 定位
 

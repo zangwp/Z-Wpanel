@@ -337,6 +337,9 @@ var i18nKeys = []string{
 	"cron.status_site_paused",
 	"cron.task_type_command",
 	"cron.task_type_file_backup",
+	"cron.task_type_wp_cron",
+	"cron.wp_cron_target",
+	"cron.every_5_minutes",
 	"database.backup_count",
 	"database.collapse_backups",
 	"database.never_backed_up",
@@ -587,13 +590,6 @@ var i18nKeys = []string{
 	"security.telemetry_enabled",
 	"security.cdn_mode_strict_trusted_ips",
 	"common.saved",
-	"extension.reset_confirm",
-	"extension.restored_default",
-	"extension.saved",
-	"extension.save_failed",
-	"extension.delete_failed",
-	"extension.reset_failed",
-	"extension.invalid_entry",
 	"files.chunk_upload_failed",
 	"files.clipboard_copy",
 	"files.clipboard_cut",
@@ -896,8 +892,6 @@ var i18nKeys = []string{
 	"auth.not_logged_in",
 	"auth.provide_credentials",
 	"common.invalid_params",
-	"extension.deleted",
-	"extension.query_failed",
 	"files.path_out_of_bounds",
 	"files.remote_import_chmod_failed",
 	"files.remote_import_completed_fix_permissions",
@@ -1691,12 +1685,6 @@ func SetupRouter(cfg *config.Config, tmplFS embed.FS, staticFS embed.FS, version
 	protected.GET("/api/log-analysis/:id/details", logAnalysisHandler.Details)
 	protected.POST("/api/log-analysis/:id/diagnostic-session", logAnalysisHandler.CreateDiagnosticSession)
 
-	extensionHandler := &handlers.ExtensionHandler{}
-	protected.GET("/api/extensions", extensionHandler.List)
-	protected.PUT("/api/extensions", extensionHandler.Save)
-	protected.DELETE("/api/extensions/:id", extensionHandler.Delete)
-	protected.POST("/api/extensions/reset", extensionHandler.Reset)
-
 	protected.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "dashboard.html", pageData(suffix, "dashboard", "dashboard_content", c))
 	})
@@ -1752,9 +1740,6 @@ func SetupRouter(cfg *config.Config, tmplFS embed.FS, staticFS embed.FS, version
 	})
 	protected.GET("/alert", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "alert.html", pageData(suffix, "alert", "alert_content", c))
-	})
-	protected.GET("/extensions", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "extension.html", pageData(suffix, "extensions", "extensions_content", c))
 	})
 	protected.GET("/settings", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "settings.html", pageData(suffix, "settings", "settings_content", c))
@@ -1850,7 +1835,6 @@ var pageTitleKeys = map[string]string{
 	"files":              "nav.files",
 	"software":           "nav.software",
 	"alert":              "nav.alert",
-	"extensions":         "nav.extensions",
 	"settings":           "nav.settings",
 	"help":               "nav.help",
 }

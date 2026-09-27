@@ -6,6 +6,23 @@
         <button @click="showHelp = true" class="btn-secondary text-sm">{{t .Lang "software.wp_config_advice"}}</button>
     </div>
 
+    <div class="info-strip p-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+                <p class="text-xs text-gray-500 mb-1">{{t .Lang "software.runtime_stack"}}</p>
+                <p class="text-white font-medium">Nginx + PHP-FPM 8.3 + MariaDB + Redis</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 mb-1">{{t .Lang "software.php_version_policy"}}</p>
+                <p class="text-gray-300">{{t .Lang "software.php_version_policy_help"}}</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 mb-1">WP-CLI</p>
+                <p class="text-gray-300">{{t .Lang "software.wp_cli_not_cron"}}</p>
+            </div>
+        </div>
+    </div>
+
     <div x-show="showHelp" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showHelp = false">
         <div class="bg-gray-800 rounded-lg p-6 w-full mx-4 shadow-xl max-h-[85vh] overflow-y-auto" style="max-width:900px">
             <h3 class="text-lg font-bold text-white mb-4">WordPress 配置建议（按站点复杂度分档）</h3>
@@ -136,7 +153,7 @@
                 <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center space-x-3">
                         <h3 class="text-lg font-semibold text-white" x-text="sw.name"></h3>
-                        <span class="text-sm text-blue-400" x-text="sw.version"></span>
+                        <span class="runtime-version text-sm" x-text="sw.version"></span>
                     </div>
                     <span class="text-xs text-gray-400" x-text="sw.status"></span>
                 </div>

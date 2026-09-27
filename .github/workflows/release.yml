@@ -679,6 +679,9 @@ jobs:
           if [[ "$RELEASE_TAG" == 'v2.2.0' ]]; then
             release_notes="Establishes zangwp/Z-Wpanel as the canonical clean repository, rotates its release-signing key, and moves the signed release, update, issue, and short-install channels to the new repository. $release_notes"
           fi
+          if [[ "$RELEASE_TAG" == 'v2.2.1' ]]; then
+            release_notes="Streamlines WordPress creation, adds focused Redis cache preparation and clearer WP-Cron/certificate guidance, removes the legacy extension catalog, and refreshes the panel with persistent light and dark themes. $release_notes"
+          fi
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             --verify-tag \
             --title "$RELEASE_TAG" \

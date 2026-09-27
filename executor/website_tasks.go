@@ -446,9 +446,12 @@ func executeCreateSite(task *Task) TaskResult {
 			removeUnusedThemes(webRoot)
 			log.Printf("已删除未使用默认主题 site=%s", domain)
 		}
-		if len(payload.InstallThemes) > 0 || len(payload.InstallPlugins) > 0 {
-			installExtensions(webRoot, systemUser, payload.InstallThemes, payload.InstallPlugins)
-			log.Printf("已安装扩展 site=%s themes=%v plugins=%v", domain, payload.InstallThemes, payload.InstallPlugins)
+		if payload.EnableRedisCache {
+			if err := installRedisCachePlugin(webRoot, systemUser); err != nil {
+				log.Printf("准备 Redis Object Cache 插件失败 site=%s: %v", domain, err)
+			} else {
+				log.Printf("已准备 Redis Object Cache 插件 site=%s", domain)
+			}
 		}
 	}
 
@@ -1368,7 +1371,7 @@ func nilIfEmpty(s string) interface{} {
 }
 
 func ReinstallWordPress(ctx context.Context, webRoot, dbName, dbUser, systemUser string, cfg *config.Config,
-	cleanDefaults, removeThemes bool, installThemes, installPlugins []string) error {
+	cleanDefaults, removeThemes, enableRedisCache bool) error {
 	var siteID int64
 	var fileLockEnabled bool
 	if err := database.GetDB().QueryRowContext(ctx, `SELECT id,file_lock_enabled FROM websites WHERE web_root=? AND system_user=?`, webRoot, systemUser).Scan(&siteID, &fileLockEnabled); err != nil {
@@ -1432,8 +1435,10 @@ func ReinstallWordPress(ctx context.Context, webRoot, dbName, dbUser, systemUser
 	if removeThemes {
 		removeUnusedThemes(webRoot)
 	}
-	if len(installThemes) > 0 || len(installPlugins) > 0 {
-		installExtensions(webRoot, systemUser, installThemes, installPlugins)
+	if enableRedisCache {
+		if err := installRedisCachePlugin(webRoot, systemUser); err != nil {
+			log.Printf("重装后准备 Redis Object Cache 插件失败 site=%s: %v", filepath.Base(webRoot), err)
+		}
 	}
 
 	return nil

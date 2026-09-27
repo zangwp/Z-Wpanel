@@ -70,10 +70,9 @@ type CreateSitePayload struct {
 	ExpiresAt          string
 	SiteType           string
 	DocumentRootSubdir string
-	CleanDefaults      bool     `json:"clean_defaults"`
-	RemoveUnusedThemes bool     `json:"remove_unused_themes"`
-	InstallThemes      []string `json:"install_themes"`
-	InstallPlugins     []string `json:"install_plugins"`
+	CleanDefaults      bool `json:"clean_defaults"`
+	RemoveUnusedThemes bool `json:"remove_unused_themes"`
+	EnableRedisCache   bool `json:"enable_redis_cache"`
 }
 
 type DeleteSitePayload struct {
