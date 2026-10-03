@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -22,6 +23,7 @@ import (
 	"github.com/zangwp/Z-Wpanel/config"
 	"github.com/zangwp/Z-Wpanel/database"
 	"github.com/zangwp/Z-Wpanel/executor"
+	"github.com/zangwp/Z-Wpanel/handlers"
 	"github.com/zangwp/Z-Wpanel/middleware"
 	"github.com/zangwp/Z-Wpanel/router"
 
@@ -64,6 +66,8 @@ func main() {
 	fileBackup := flag.String("file-backup", "", "执行文件备份: siteID:mode")
 	runScheduledCron := flag.Int("run-scheduled-cron", 0, "内部使用：执行 "+config.ProductName+" 受管计划任务")
 	runAutoBackup := flag.Bool("run-auto-backup", false, "手动触发自动备份（测试用）")
+	vpsTool := flag.String("vps-tool", "", "VPS operation")
+	vpsValue := flag.String("vps-value", "", "VPS operation option")
 	showInfo := flag.Bool("info", false, "查看面板信息")
 	repairConfigCheck := flag.Bool("repair-config-check", false, "内部使用：只读校验 repair 配置")
 	updateWatchdog := flag.String("update-watchdog", "", "内部使用：面板更新健康检查守护")
@@ -156,6 +160,69 @@ func main() {
 			log.Printf("面板数据库恢复失败: %v", err)
 			os.Exit(1)
 		}
+		return
+	}
+	if *vpsTool != "" {
+		if *vpsTool == "dns-status" || *vpsTool == "dns-test" {
+			status := executor.GetDNSStatus()
+			var probeErr error
+			if *vpsTool == "dns-test" {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				status, probeErr = executor.ProbeDNSPreset(ctx, *vpsValue)
+			}
+			if err := json.NewEncoder(os.Stdout).Encode(status); err != nil {
+				log.Fatal(err)
+			}
+			if probeErr != nil {
+				log.Fatal(probeErr)
+			}
+			return
+		}
+		if *vpsTool == "time-sync" {
+			if err := handlers.StartSystemTimeSync(); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println("自动校时已启动；是否已同步请查看当前状态。")
+			return
+		}
+		if *vpsTool == "system-update" {
+			status, err := executor.StartSystemPackageUpdate(cfg)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("系统更新已启动: %s\n使用 b system-update-status 查看进度\n", status.ID)
+			return
+		}
+		if *vpsTool == "system-update-status" {
+			status := executor.ReconcileSystemPackageUpdateStatus(cfg)
+			if err := json.NewEncoder(os.Stdout).Encode(status); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+		if *vpsTool == "dns" {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			var err error
+			if *vpsValue == "default" {
+				_, err = executor.RestoreAutomaticDNS(ctx)
+			} else {
+				_, err = executor.ApplyDNSPreset(ctx, *vpsValue)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println("DNS 已更新")
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), executor.SimpleVPSToolTimeout())
+		defer cancel()
+		out, err := executor.RunSimpleVPSTool(ctx, *vpsTool, *vpsValue)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(out)
 		return
 	}
 	if *banIPNginx != "" || *unbanIPNginx != "" || *recordFail2banIP != "" || *unbanFail2banIP != "" {
@@ -354,6 +421,7 @@ func main() {
 	if _, err := exec.LookPath("sshpass"); err != nil {
 		log.Println("sshpass 未安装，远程备份密码认证功能不可用；请通过安装脚本或包管理器手动安装")
 	}
+	executor.StartFirewallPortRuleManager()
 	executor.StartProcessGuard()
 	executor.StartAlertMonitor(Version)
 	executor.DefaultWPAnomalyMonitor(cfg)
@@ -395,7 +463,13 @@ func main() {
 	go func() {
 		if useTLS {
 			log.Printf("%s 启动于端口 %d (HTTPS)", config.ProductName, port)
-			serverErr <- server.ListenAndServeTLS(cfg.Panel.TLSCertPath, cfg.Panel.TLSKeyPath)
+			if err := executor.InitializePanelCertificate(cfg.Panel.TLSCertPath, cfg.Panel.TLSKeyPath); err != nil {
+				serverErr <- err
+				return
+			}
+			server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: executor.GetPanelCertificate}
+			executor.StartPanelCertificateRenewal(cfg)
+			serverErr <- server.ListenAndServeTLS("", "")
 			return
 		}
 		log.Printf("%s 启动于端口 %d（HTTP，未配置TLS）", config.ProductName, port)

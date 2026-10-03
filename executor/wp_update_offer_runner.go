@@ -59,7 +59,7 @@ func newWPUpdateOfferRunner(db *sql.DB) (*wpUpdateOfferRunner, error) {
 		return nil, errors.New("invalid update offer runner")
 	}
 	return &wpUpdateOfferRunner{
-		db: db, phpPath: wpInventoryPHPPath, runuserPath: wpInventoryRunuserPath,
+		db: db, phpPath: wpInventoryPHPPath(), runuserPath: wpInventoryRunuserPath,
 		phpDir: "/usr/bin", runuserDir: "/usr/sbin", ownerUID: 0, ownerGID: 0,
 		lookupUser: user.Lookup, chown: os.Chown,
 	}, nil

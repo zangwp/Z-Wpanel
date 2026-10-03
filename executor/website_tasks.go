@@ -338,7 +338,7 @@ func executeCreateSite(task *Task) TaskResult {
 	}
 	rollbacks = append(rollbacks, rollbackStep{"删除PHP-FPM配置 " + phpPoolPath, func() error {
 		os.Remove(phpPoolPath)
-		exec.Command("systemctl", "reload", "php8.3-fpm").Run()
+		exec.Command("systemctl", "reload", PHPFPMService()).Run()
 		return nil
 	}})
 
@@ -621,7 +621,7 @@ func executeDeleteSite(task *Task) TaskResult {
 	}
 
 	exec.Command("nginx", "-s", "reload").Run()
-	exec.Command("systemctl", "reload", "php8.3-fpm").Run()
+	exec.Command("systemctl", "reload", PHPFPMService()).Run()
 
 	os.RemoveAll(certDir)
 
@@ -932,7 +932,7 @@ var readPrimaryDomainWPSiteURLs = ReadWPSiteURLs
 var changeWebsitePrimaryDomain = updateWebsitePrimaryDomain
 
 var reloadPrimaryDomainPHP = func() error {
-	out, err := exec.Command("systemctl", "reload", "php8.3-fpm").CombinedOutput()
+	out, err := exec.Command("systemctl", "reload", PHPFPMService()).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("reload php-fpm: %s", strings.TrimSpace(string(out)))
 	}

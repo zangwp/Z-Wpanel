@@ -1349,12 +1349,6 @@ var panelUpdateCache struct {
 	message string
 }
 
-const systemUpdateCommandTimeout = 2 * time.Minute
-
-func newSystemUpdateCommand(ctx context.Context) *exec.Cmd {
-	return exec.CommandContext(ctx, "apt", "list", "--upgradable")
-}
-
 var runSystemUpdateCommand = func() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), systemUpdateCommandTimeout)
 	defer cancel()
@@ -1398,17 +1392,9 @@ func checkSystemUpdateState() alertCheckResult {
 	if err != nil {
 		return unknownAlertCheck(fmt.Errorf("list system updates: %w", err))
 	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	var names []string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Listing...") {
-			continue
-		}
-		parts := strings.SplitN(line, "/", 2)
-		if len(parts) > 0 {
-			names = append(names, parts[0])
-		}
+	for _, candidate := range ParseSystemPackageCandidates(string(out)) {
+		names = append(names, candidate.Name)
 	}
 
 	sysUpdateCache.mu.Lock()

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,12 +20,14 @@ import (
 const systemPackageUpdateStatusFile = "system-package-update-status.json"
 
 type SystemPackageUpdateStatus struct {
-	ID         string `json:"id"`
-	Status     string `json:"status"`
-	Stage      string `json:"stage"`
-	MessageKey string `json:"message_key"`
-	StartedAt  string `json:"started_at,omitempty"`
-	UpdatedAt  string `json:"updated_at"`
+	ID             string `json:"id"`
+	Status         string `json:"status"`
+	Stage          string `json:"stage"`
+	MessageKey     string `json:"message_key"`
+	Detail         string `json:"detail,omitempty"`
+	StartedAt      string `json:"started_at,omitempty"`
+	UpdatedAt      string `json:"updated_at"`
+	RemainingCount int    `json:"remaining_count,omitempty"`
 }
 
 type systemPackageUpdatePlan struct {
@@ -38,9 +41,13 @@ var (
 	systemPackageUpdateUnitLive = func(id string) bool {
 		return exec.Command("systemctl", "is-active", "--quiet", "yub-wpanel-system-update-"+id).Run() == nil
 	}
-	systemPackageUpdateLockPath = "/run/lock/yub-wpanel-system-update.lock"
-	systemPackageUpdateStartMu  sync.Mutex
+	systemPackageUpdateLockPath  = "/run/lock/yub-wpanel-system-update.lock"
+	systemPackageUpdateStartMu   sync.Mutex
+	systemPackageUpdateSleep     = time.Sleep
+	systemPackageUpdateRemaining = readRemainingSystemPackages
 )
+
+var systemPackageUpdateURLCredentialsRE = regexp.MustCompile(`(?i)(https?://)[^/@\s]+@`)
 
 func SystemPackageUpdateStatusPath(cfg *config.Config) string {
 	return filepath.Join(cfg.Panel.DataDir, systemPackageUpdateStatusFile)
@@ -107,9 +114,10 @@ func StartSystemPackageUpdate(cfg *config.Config) (SystemPackageUpdateStatus, er
 		_ = os.Remove(planPath)
 		return SystemPackageUpdateStatus{}, err
 	}
-	out, err := exec.Command("systemd-run", "--unit", "yub-wpanel-system-update-"+id, "--collect", "--property", "Type=exec", executable, "--system-package-update-plan", planPath).CombinedOutput()
+	out, err := exec.Command("systemd-run", "--unit", "yub-wpanel-system-update-"+id, "--collect", "--property", "Type=exec", executable, "--config", filepath.Join(cfg.Panel.DataDir, "config.json"), "--system-package-update-plan", planPath).CombinedOutput()
 	if err != nil {
 		status.Status, status.Stage, status.MessageKey, status.UpdatedAt = "failed", "start", "settings.system_update_status_start_failed", time.Now().UTC().Format(time.RFC3339)
+		status.Detail = systemPackageUpdateErrorDetail(fmt.Errorf("systemd-run failed: %w: %s", err, strings.TrimSpace(string(out))))
 		_ = writePanelDBRestoreJSON(plan.StatusPath, status)
 		_ = os.Remove(planPath)
 		return SystemPackageUpdateStatus{}, fmt.Errorf("启动系统更新失败: %s", strings.TrimSpace(string(out)))
@@ -137,38 +145,99 @@ func RunSystemPackageUpdatePlan(planPath string) error {
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	started := time.Now().UTC().Format(time.RFC3339)
-	writeStatus := func(status, stage, messageKey string) {
-		_ = writePanelDBRestoreJSON(plan.StatusPath, SystemPackageUpdateStatus{ID: plan.ID, Status: status, Stage: stage, MessageKey: messageKey, StartedAt: started, UpdatedAt: time.Now().UTC().Format(time.RFC3339)})
+	writeStatus := func(status, stage, messageKey, detail string) {
+		_ = writePanelDBRestoreJSON(plan.StatusPath, SystemPackageUpdateStatus{ID: plan.ID, Status: status, Stage: stage, MessageKey: messageKey, Detail: detail, StartedAt: started, UpdatedAt: time.Now().UTC().Format(time.RFC3339)})
 	}
-	fail := func(stage, messageKey string) error {
-		writeStatus("failed", stage, messageKey)
+	fail := func(stage, messageKey string, cause error) error {
+		writeStatus("failed", stage, messageKey, systemPackageUpdateErrorDetail(cause))
+		if cause != nil {
+			return cause
+		}
 		return errors.New(messageKey)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
+	writeStatus("running", "services_preflight", "settings.system_update_status_checking_services", "")
+	if err := checkSystemPackageUpdateHealth(ctx); err != nil {
+		return fail("services_preflight", "settings.system_update_status_health_failed", err)
+	}
+	aptOptions := []string{"-o", "Acquire::Retries=3", "-o", "DPkg::Lock::Timeout=300"}
+	upgradeOptions := append(append([]string{}, aptOptions...), "--with-new-pkgs", "--no-remove")
 	for _, step := range []struct {
 		stage, messageKey, name string
 		args                    []string
 	}{
-		{"refresh", "settings.system_update_status_refresh", "apt-get", []string{"update"}},
-		{"preflight", "settings.system_update_status_preflight", "apt-get", []string{"-s", "upgrade"}},
-		{"upgrade", "settings.system_update_status_upgrading", "env", []string{"DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "-o", "Dpkg::Options::=--force-confold", "upgrade"}},
+		{"refresh", "settings.system_update_status_refresh", "apt-get", append(append([]string{}, aptOptions...), "update")},
+		{"preflight", "settings.system_update_status_preflight", "apt-get", append(append([]string{}, upgradeOptions...), "-s", "upgrade")},
+		{"upgrade", "settings.system_update_status_upgrading", "env", append([]string{"DEBIAN_FRONTEND=noninteractive", "apt-get", "-y"}, append(append([]string{}, upgradeOptions...), "-o", "Dpkg::Options::=--force-confold", "upgrade")...)},
 		{"packages", "settings.system_update_status_checking_packages", "apt-get", []string{"check"}},
 		{"packages", "settings.system_update_status_checking_packages", "dpkg", []string{"--audit"}},
-		{"services", "settings.system_update_status_checking_services", "nginx", []string{"-t"}},
 	} {
-		writeStatus("running", step.stage, step.messageKey)
+		writeStatus("running", step.stage, step.messageKey, "")
 		if err := systemPackageUpdateCommand(ctx, step.name, step.args...); err != nil {
-			return fail(step.stage, "settings.system_update_status_failed")
+			return fail(step.stage, "settings.system_update_status_failed", err)
 		}
 	}
-	for _, service := range []string{"nginx", "php8.3-fpm", "mariadb", "redis-server", "yub-wpanel"} {
-		if err := systemPackageUpdateCommand(ctx, "systemctl", "is-active", "--quiet", service); err != nil {
-			return fail("services", "settings.system_update_status_health_failed")
-		}
+	writeStatus("running", "services", "settings.system_update_status_checking_services", "")
+	if err := checkSystemPackageUpdateHealth(ctx); err != nil {
+		return fail("services", "settings.system_update_status_health_failed", err)
 	}
 	status := SystemPackageUpdateStatus{ID: plan.ID, Status: "success", Stage: "complete", MessageKey: "settings.system_update_status_success", StartedAt: started, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+	writeStatus("running", "remaining", "settings.system_update_status_checking_remaining", "")
+	remaining, err := systemPackageUpdateRemaining(ctx)
+	if err != nil {
+		return fail("remaining", "settings.system_update_status_remaining_failed", err)
+	}
+	if len(remaining) > 0 {
+		status.RemainingCount = len(remaining)
+		status.MessageKey = "settings.system_update_status_remaining"
+		status.Detail = strings.Join(remaining, "\n")
+	}
 	return writePanelDBRestoreJSON(plan.StatusPath, status)
+}
+
+func checkSystemPackageUpdateHealth(ctx context.Context) error {
+	for _, service := range []string{"nginx", PHPFPMService(), "mariadb", "redis-server", "yub-wpanel"} {
+		if err := waitForSystemPackageUpdateService(ctx, service); err != nil {
+			return err
+		}
+	}
+	if err := systemPackageUpdateCommand(ctx, "nginx", "-t"); err != nil {
+		return err
+	}
+	return systemPackageUpdateCommand(ctx, PHPFPMBinary(), "-t")
+}
+func waitForSystemPackageUpdateService(ctx context.Context, service string) error {
+	var lastErr error
+	for attempt := 0; attempt < 6; attempt++ {
+		if err := systemPackageUpdateCommand(ctx, "systemctl", "is-active", "--quiet", service); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < 5 {
+			systemPackageUpdateSleep(5 * time.Second)
+		}
+	}
+	return fmt.Errorf("service %s did not become active: %w", service, lastErr)
+}
+
+func systemPackageUpdateErrorDetail(err error) string {
+	if err == nil {
+		return ""
+	}
+	detail := systemPackageUpdateURLCredentialsRE.ReplaceAllString(strings.TrimSpace(err.Error()), `${1}[redacted]@`)
+	detail = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' || r >= 32 {
+			return r
+		}
+		return -1
+	}, detail)
+	const maximum = 2048
+	if len(detail) > maximum {
+		detail = detail[:maximum] + "..."
+	}
+	return detail
 }
 
 func runSystemPackageUpdateCommand(ctx context.Context, name string, args ...string) error {

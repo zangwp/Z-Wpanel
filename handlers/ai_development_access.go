@@ -228,10 +228,10 @@ func buildAIDevelopmentCredentialPackage(domain, host string, port int, systemUs
 		content []byte
 		mode    os.FileMode
 	}{
-		prefix + "AGENTS.md":                  {content: []byte(buildAIDevelopmentProjectInstructions(domain, webRoot)), mode: 0644},
-		prefix + "CLAUDE.md":                  {content: []byte("Read and follow AGENTS.md completely before working on this project.\n"), mode: 0644},
-		prefix + "README.md":                  {content: []byte(buildAIDevelopmentProjectReadme(domain, projectName)), mode: 0644},
-		prefix + ".gitignore":                 {content: []byte(".yub-wpanel-ai/\n"), mode: 0644},
+		prefix + "AGENTS.md":                    {content: []byte(buildAIDevelopmentProjectInstructions(domain, webRoot)), mode: 0644},
+		prefix + "CLAUDE.md":                    {content: []byte("Read and follow AGENTS.md completely before working on this project.\n"), mode: 0644},
+		prefix + "README.md":                    {content: []byte(buildAIDevelopmentProjectReadme(domain, projectName)), mode: 0644},
+		prefix + ".gitignore":                   {content: []byte(".yub-wpanel-ai/\n"), mode: 0644},
 		prefix + ".yub-wpanel-ai/id_ed25519":    {content: credential.PrivateKey, mode: 0600},
 		prefix + ".yub-wpanel-ai/known_hosts":   {content: []byte(knownHosts), mode: 0600},
 		prefix + ".yub-wpanel-ai/ssh_config":    {content: []byte(fmt.Sprintf("Host yub-wpanel-ai\n  HostName %s\n  Port %d\n  User %s\n  HostKeyAlias yub-wpanel-ai-target\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n", host, port, systemUser)), mode: 0600},

@@ -30,7 +30,7 @@ On a minimal image without `curl`, first run `apt-get update && apt-get install 
 
 ## 标准安装 / Standard installation
 
-以 root 身份在全新的 Debian 13 或 Ubuntu 24.04 LTS 服务器执行；amd64 与 arm64 使用同一安装命令：
+以 root 身份在全新的 Debian 13、Ubuntu 24.04 LTS 或 Ubuntu 26.04 LTS 服务器执行；amd64 与 arm64 使用同一安装命令：
 
 ```bash
 apt-get update
@@ -69,7 +69,7 @@ Any verification failure stops the subshell before the installer runs. You may a
 
 ## 国内入口 / China-friendly entry
 
-国内入口会优先选择与当前系统和架构匹配的 Debian/Ubuntu 镜像；Debian 的 PHP 源也会选择受支持镜像，Ubuntu 则使用 Noble 原生 PHP 8.3。它不会绕过签名验证。把上面命令中的三个 `install.sh` 文件名改为 `install-cn.sh`，最后执行：
+国内入口会优先选择与当前系统和架构匹配的 Debian/Ubuntu 镜像；Debian 的 PHP 源也会选择受支持镜像，Ubuntu 24.04 使用经验证的 PHP 8.5 PPA，Ubuntu 26.04 使用原生 PHP 8.5 安全更新包。它不会绕过签名验证。把上面命令中的三个 `install.sh` 文件名改为 `install-cn.sh`，最后执行：
 
 ```bash
 YUB_WPANEL_GITHUB_PROXY='https://你信任的反代地址' bash install-cn.sh

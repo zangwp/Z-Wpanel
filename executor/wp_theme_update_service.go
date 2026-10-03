@@ -17,14 +17,14 @@ import (
 )
 
 var (
-	ErrWPThemeUpdateInvalid         = errors.New("invalid theme update request")
-	ErrWPThemeUpdateNotFound        = errors.New("theme update resource not found")
-	ErrWPThemeUpdateConflict        = errors.New("theme update request conflict")
-	ErrWPThemeUpdateBusy            = errors.New("theme update service busy")
-	ErrWPThemeUpdateUnavailable     = errors.New("theme update upstream unavailable")
-	ErrWPThemeUpdateSiteBusy        = errors.New("theme update blocked by active site restore")
-	ErrWPThemeUpdateNotInRepository = errors.New("theme not available in the official WordPress.org repository")
-	ErrWPThemeUpdateLicenseInvalid  = errors.New("theme update license invalid or not activated")
+	ErrWPThemeUpdateInvalid                    = errors.New("invalid theme update request")
+	ErrWPThemeUpdateNotFound                   = errors.New("theme update resource not found")
+	ErrWPThemeUpdateConflict                   = errors.New("theme update request conflict")
+	ErrWPThemeUpdateBusy                       = errors.New("theme update service busy")
+	ErrWPThemeUpdateUnavailable                = errors.New("theme update upstream unavailable")
+	ErrWPThemeUpdateSiteBusy                   = errors.New("theme update blocked by active site restore")
+	ErrWPThemeUpdateNotInRepository            = errors.New("theme not available in the official WordPress.org repository")
+	ErrWPThemeUpdateLicenseInvalid             = errors.New("theme update license invalid or not activated")
 	ErrWPThemeUpdateLicenseProtocolUnsupported = errors.New("theme update uses a commercial license download protocol not supported by the panel")
 )
 

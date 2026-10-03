@@ -62,12 +62,12 @@
         <div x-show="sidebarOpen" @click="sidebarOpen = false" x-transition.opacity
              class="lg:hidden fixed inset-0 bg-black/60 z-40"></div>
 
-        <div class="flex h-screen">
+        <div class="panel-layout flex h-screen">
             <!-- Sidebar -->
             <aside x-show="sidebarOpen" @click.away="if (window.innerWidth < 1024) sidebarOpen = false"
-                   class="fixed lg:static inset-y-0 left-0 z-40 w-64 bg-gray-950 border-r border-gray-800 flex flex-col transition-transform duration-200"
+                   class="panel-sidebar fixed lg:static inset-y-0 left-0 z-40 w-64 bg-gray-950 border-r border-gray-800 flex flex-col transition-transform duration-200"
                    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
-                <div class="p-4 border-b border-gray-800">
+                <div class="sidebar-brand p-4 border-b border-gray-800">
                     <div class="flex items-center gap-3">
                         <img src="{{.AssetPrefix}}/logo.png" alt="{{.PanelTitle}}" class="w-10 h-10 rounded-lg flex-shrink-0">
                         <div class="min-w-0">
@@ -76,7 +76,7 @@
                         </div>
                     </div>
                 </div>
-                <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+                <nav class="sidebar-nav flex-1 p-3 space-y-1 overflow-y-auto">
                     <a href="/{{$.RandomSuffix}}/" class="sidebar-link {{if eq .Active "dashboard"}}active{{end}}">
                         <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
@@ -156,6 +156,7 @@
 						</svg>
 						{{t .Lang "nav.log_analysis"}}
 					</a>
+                    <a href="/{{$.RandomSuffix}}/vps" class="sidebar-link {{if eq .Active "vps"}}active{{end}}"><svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M5 4h14v6H5zM5 14h14v6H5zM8 7h1m-1 10h1"/></svg>{{t .Lang "nav.vps"}}</a>
                     <a href="/{{$.RandomSuffix}}/settings" class="sidebar-link {{if eq .Active "settings"}}active{{end}}">
                         <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -170,9 +171,10 @@
                         {{t .Lang "nav.help"}}
                     </a>
 
-                    <div class="border-t border-gray-800 pt-2 mt-2">
-                        <div class="px-3 py-2 text-xs text-gray-500">
-                            <div class="mb-2">{{t .Lang "language.label"}}</div>
+                </nav>
+                <div class="sidebar-footer border-t border-gray-800 pt-2 mt-2">
+                        <div class="sidebar-language text-xs text-gray-500">
+                            <div>{{t .Lang "language.label"}}</div>
                             <div class="flex items-center gap-2">
                                 <a href="?lang=zh-CN" class="{{if eq .Lang "zh-CN"}}text-blue-400{{else}}text-gray-400{{end}}">{{t .Lang "language.chinese"}}</a>
                                 <span>/</span>
@@ -198,11 +200,11 @@
                             </svg>
                             {{t .Lang "nav.logout"}}
                         </a>
-                    </div>
-                </nav>
+                </div>
             </aside>
 
             <main class="flex-1 overflow-y-auto p-4 md:p-6 lg:pt-6">
+                {{if eq .ContentTemplate "vps_content"}}{{template "vps_content" .}}{{end}}
                 {{if eq .ContentTemplate "dashboard_content"}}{{template "dashboard_content" .}}{{end}}
                 {{if eq .ContentTemplate "websites_content"}}{{template "websites_content" .}}{{end}}
                 {{if eq .ContentTemplate "site_migration_content"}}{{template "site_migration_content" .}}{{end}}

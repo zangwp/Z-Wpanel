@@ -9,26 +9,12 @@
         </div>
     </div>
 
-    <div class="info-strip p-4 mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-                <p class="text-white font-semibold mb-1">{{t .Lang "cron.panel_jobs_title"}}</p>
-                <p class="text-gray-400 text-xs">{{t .Lang "cron.panel_jobs_help"}}</p>
-            </div>
-            <div>
-                <p class="text-white font-semibold mb-1">{{t .Lang "cron.wp_cron_replace_title"}}</p>
-                <p class="text-gray-400 text-xs">{{t .Lang "cron.wp_cron_summary"}}</p>
-            </div>
-            <div>
-                <p class="text-white font-semibold mb-1">{{t .Lang "cron.ssl_renewal_title"}}</p>
-                <p class="text-gray-400 text-xs">{{t .Lang "cron.ssl_renewal_help"}}</p>
-            </div>
-        </div>
-    </div>
+    <p class="text-sm text-gray-400 mb-6">{{t .Lang "cron.overview_help"}}</p>
 
     <div class="card">
         <div class="overflow-x-auto">
-            <table class="w-full">
+            <table class="w-full cron-jobs">
+                <colgroup><col style="width:22%"><col style="width:10%"><col style="width:11%"><col style="width:18%"><col style="width:8%"><col style="width:16%"><col style="width:15%"></colgroup>
                 <thead class="border-b border-gray-700">
                     <tr>
                         <th class="table-header">{{t .Lang "cron.job_name"}}</th>
@@ -43,20 +29,21 @@
                 <tbody>
                     <template x-for="job in jobs" :key="job.id">
                         <tr class="border-b border-gray-700/50">
-                            <td class="table-cell font-medium" x-text="displayJobName(job)"></td>
+                            <td class="table-cell font-medium"><span class="cron-job-text" :title="displayJobName(job)" x-text="displayJobName(job)"></span></td>
                             <td class="table-cell text-xs whitespace-nowrap" x-text="displaySchedule(job.cron_expression)"></td>
                             <td class="table-cell text-xs" x-text="taskTypeLabel(job)"></td>
-                            <td class="table-cell font-mono text-xs max-w-[200px] truncate" x-text="taskContent(job)"></td>
+                            <td class="table-cell font-mono text-xs"><span class="cron-job-text" :title="taskContent(job)" x-text="taskContent(job)"></span></td>
                             <td class="table-cell">
                                 <span :class="job.runtime_suspended ? 'badge-warning' : (job.enabled ? 'badge-success' : 'badge-warning')"
                                       x-text="job.runtime_reason === 'migration_locked' ? t('cron.status_migration_locked') : (job.runtime_reason === 'paused' ? t('cron.status_site_paused') : (job.enabled ? t('cron.status_enabled') : t('cron.status_disabled')))"></span>
                             </td>
-                            <td class="table-cell text-xs text-gray-400" x-text="job.last_run_at || '--'"></td>
+                            <td class="table-cell text-xs text-gray-400" :title="job.last_run_at || ''" x-text="formatRunTime(job.last_run_at)"></td>
                             <td class="table-cell">
                                 <div class="flex flex-wrap gap-1">
-                                    <button @click="runJob(job)" :disabled="job.running" class="btn-success text-xs py-1 px-2" :class="job.running ? 'opacity-50 cursor-not-allowed' : ''" x-text="job.running ? t('cron.job_running') : t('cron.run')"></button>
-                                    <button @click="openEdit(job)" class="text-xs py-1 px-2 rounded" style="background-color: #1e3a5f; color: #93c5fd;">{{t .Lang "cron.edit"}}</button>
-                                    <button @click="deleteJob(job)" class="btn-danger text-xs py-1 px-2">{{t .Lang "cron.delete"}}</button>
+                                    <button x-show="job.task_type !== 'wp_cron'" @click="runJob(job)" :disabled="job.running" class="btn-secondary text-xs py-1 px-2" :class="job.running ? 'opacity-50 cursor-not-allowed' : ''" x-text="job.running ? t('cron.job_running') : t('cron.run')"></button>
+                                    <a x-show="job.task_type === 'wp_cron'" :href="'/{{.RandomSuffix}}/websites/' + job.site_id + '#security-maintenance'" class="text-xs text-blue-400 py-1 px-2">{{t .Lang "cron.site_settings"}}</a>
+                                    <button x-show="job.task_type !== 'wp_cron'" @click="openEdit(job)" class="text-xs py-1 px-2 rounded" style="background-color: #1e3a5f; color: #93c5fd;">{{t .Lang "cron.edit"}}</button>
+                                    <button x-show="job.task_type !== 'wp_cron'" @click="deleteJob(job)" class="btn-danger text-xs py-1 px-2">{{t .Lang "cron.delete"}}</button>
                                 </div>
                             </td>
                         </tr>
@@ -125,7 +112,7 @@
                     <select x-model="form.task_type" class="input-field" @change="onTaskTypeChange(true)">
                         <option value="command">{{t .Lang "cron.custom_command"}}</option>
                         <option value="file_backup">{{t .Lang "cron.backup_site_files"}}</option>
-                        <option value="wp_cron">{{t .Lang "cron.wp_cron_call"}}</option>
+
                     </select>
                 </div>
                 <div x-show="form.task_type === 'wp_cron'" class="p-3 rounded mb-3" style="background-color: #0f172a;">
@@ -223,11 +210,17 @@ function cronManager() {
             if (site) this.form.name = '[' + prefix + '] ' + site.domain;
         },
         displayJobName(job) {
+            if (job.task_type === 'wp_cron') return String(job.name || job.runtime_site_domain || job.command || '').replace(/^\[wp_cron\]\s*/, '');
             if (job.task_type !== 'file_backup') return job.name;
             const match = String(job.name || '').match(/^\[file_backup(?::(?:incremental|full))?\]\s*(.*)$/);
             if (!match) return job.name;
             const label = job.backup_mode === 'full' ? t('cron.full_backup') : t('cron.incremental_backup');
             return '[' + label + '] ' + match[1];
+        },
+        formatRunTime(value) {
+            if (!value) return '--';
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? value : date.toLocaleString(document.documentElement.lang || undefined, {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
         },
         taskTypeLabel(job) {
             if (job.task_type === 'file_backup') return t('cron.task_type_file_backup');
@@ -299,6 +292,7 @@ function cronManager() {
             } catch(e) { showToast(e.message, 'error'); }
         },
         async runJob(job) {
+            if (job.task_type === 'wp_cron') return;
             let confirmedPaused = false;
             if (job.runtime_reason === 'paused') {
                 if (!await confirmModal(t('cron.confirm_run_paused', { domain: job.runtime_site_domain || '' }))) return;
@@ -318,6 +312,7 @@ function cronManager() {
             } catch(e) { this.cronLogContent = t('cron.load_failed_with_error', { error: e.message }); }
         },
         async deleteJob(job) {
+            if (job.task_type === 'wp_cron') return;
             if (!await confirmModal(t('cron.confirm_delete', { name: this.displayJobName(job) }))) return;
             try { await api('/cron/' + job.id, { method: 'DELETE' }); await this.fetchList(); showToast(t('cron.deleted_success'), 'success'); } catch(e) { showToast(e.message, 'error'); }
         }

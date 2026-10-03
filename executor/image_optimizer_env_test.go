@@ -36,8 +36,9 @@ func TestEnsurePHPExifExtensionSkipsWhenAlreadyInstalled(t *testing.T) {
 	binDir := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "calls.log")
 
-	writeStubBinary(t, binDir, "dpkg", 0, marker)    // "installed"
-	writeStubBinary(t, binDir, "apt-get", 1, marker) // must never be invoked
+	writeStubBinary(t, binDir, PHPCLIBinary(), 1, marker) // module absent
+	writeStubBinary(t, binDir, "dpkg", 0, marker)         // "installed"
+	writeStubBinary(t, binDir, "apt-get", 1, marker)      // must never be invoked
 	writeStubBinary(t, binDir, "systemctl", 1, marker)
 
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -45,8 +46,23 @@ func TestEnsurePHPExifExtensionSkipsWhenAlreadyInstalled(t *testing.T) {
 	EnsurePHPExifExtension()
 
 	calls := readMarkerLines(t, marker)
-	if len(calls) != 1 || !strings.Contains(calls[0], "dpkg") {
+	if len(calls) != 2 || !strings.Contains(calls[1], "dpkg") {
 		t.Fatalf("expected only the dpkg check to run, got calls: %v", calls)
+	}
+}
+
+func TestEnsurePHPExifExtensionUsesBundledModuleWithoutAPT(t *testing.T) {
+	binDir := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "calls.log")
+	writeStubBinary(t, binDir, PHPCLIBinary(), 0, marker)
+	for _, name := range []string{"dpkg", "apt-get", "systemctl"} {
+		writeStubBinary(t, binDir, name, 1, marker)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	EnsurePHPExifExtension()
+	calls := readMarkerLines(t, marker)
+	if len(calls) != 1 || !strings.Contains(calls[0], "extension_loaded") {
+		t.Fatalf("bundled EXIF must not trigger package installation or service reload: %v", calls)
 	}
 }
 
@@ -54,9 +70,10 @@ func TestEnsurePHPExifExtensionInstallsAndReloadsWhenMissing(t *testing.T) {
 	binDir := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "calls.log")
 
-	writeStubBinary(t, binDir, "dpkg", 1, marker)      // "not installed"
-	writeStubBinary(t, binDir, "apt-get", 0, marker)   // install succeeds
-	writeStubBinary(t, binDir, "systemctl", 0, marker) // reload succeeds
+	writeStubBinary(t, binDir, PHPCLIBinary(), 1, marker) // module absent
+	writeStubBinary(t, binDir, "dpkg", 1, marker)         // "not installed"
+	writeStubBinary(t, binDir, "apt-get", 0, marker)      // install succeeds
+	writeStubBinary(t, binDir, "systemctl", 0, marker)    // reload succeeds
 
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
@@ -76,9 +93,10 @@ func TestEnsurePHPExifExtensionDoesNotReloadOnInstallFailure(t *testing.T) {
 	binDir := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "calls.log")
 
-	writeStubBinary(t, binDir, "dpkg", 1, marker)      // "not installed"
-	writeStubBinary(t, binDir, "apt-get", 1, marker)   // install fails
-	writeStubBinary(t, binDir, "systemctl", 1, marker) // must not be reached
+	writeStubBinary(t, binDir, PHPCLIBinary(), 1, marker) // module absent
+	writeStubBinary(t, binDir, "dpkg", 1, marker)         // "not installed"
+	writeStubBinary(t, binDir, "apt-get", 1, marker)      // install fails
+	writeStubBinary(t, binDir, "systemctl", 1, marker)    // must not be reached
 
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 

@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -20,11 +21,7 @@ type SystemUpdateHandler struct {
 	Config *config.Config
 }
 
-type systemPackage struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	Repo    string `json:"repo"`
-}
+type systemPackage = executor.SystemPackageCandidate
 
 var sysPkgCache struct {
 	mu       sync.Mutex
@@ -42,7 +39,12 @@ func (h *SystemUpdateHandler) Check(c *gin.Context) {
 	}
 	sysPkgCache.mu.Unlock()
 
-	pkgs := getUpgradablePackages()
+	pkgs, err := getUpgradablePackages()
+	if err != nil {
+		log.Printf("查询系统更新失败: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(i18n.TE(c.Request, "settings.system_update_check_failed")))
+		return
+	}
 
 	sysPkgCache.mu.Lock()
 	sysPkgCache.expireAt = time.Now().Add(5 * time.Minute)
@@ -89,6 +91,8 @@ func parseSystemPackageCatalog(osRelease string) systemPackageCatalog {
 		return systemPackageCatalog{Distribution: "Debian 13", BaseURL: "https://packages.debian.org/trixie/"}
 	case "ubuntu:24.04:noble":
 		return systemPackageCatalog{Distribution: "Ubuntu 24.04 LTS", BaseURL: "https://packages.ubuntu.com/noble/"}
+	case "ubuntu:26.04:resolute":
+		return systemPackageCatalog{Distribution: "Ubuntu 26.04 LTS", BaseURL: "https://packages.ubuntu.com/resolute/"}
 	default:
 		return systemPackageCatalog{}
 	}
@@ -125,47 +129,22 @@ func systemUpdateStatusResponse(c *gin.Context, status executor.SystemPackageUpd
 		message = i18n.TE(c.Request, status.MessageKey)
 	}
 	return gin.H{
-		"id":          status.ID,
-		"status":      status.Status,
-		"stage":       status.Stage,
-		"message":     message,
-		"message_key": status.MessageKey,
-		"started_at":  status.StartedAt,
-		"updated_at":  status.UpdatedAt,
+		"id":              status.ID,
+		"status":          status.Status,
+		"stage":           status.Stage,
+		"message":         message,
+		"message_key":     status.MessageKey,
+		"detail":          status.Detail,
+		"remaining_count": status.RemainingCount,
+		"started_at":      status.StartedAt,
+		"updated_at":      status.UpdatedAt,
 	}
 }
 
-func getUpgradablePackages() []systemPackage {
-	out, err := exec.Command("bash", "-c", "apt list --upgradable 2>/dev/null").Output()
-	if err != nil {
-		return []systemPackage{}
-	}
+func getUpgradablePackages() ([]systemPackage, error) {
+	return executor.ReadSystemPackageCandidates(context.Background())
+}
 
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	var pkgs []systemPackage
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Listing...") {
-			continue
-		}
-		parts := strings.SplitN(line, " ", 3)
-		if len(parts) < 2 {
-			continue
-		}
-		nameRepo := strings.SplitN(parts[0], "/", 2)
-		name := nameRepo[0]
-		repo := ""
-		if len(nameRepo) > 1 {
-			repo = nameRepo[1]
-		}
-		pkgs = append(pkgs, systemPackage{
-			Name:    name,
-			Version: parts[1],
-			Repo:    repo,
-		})
-	}
-	if pkgs == nil {
-		pkgs = []systemPackage{}
-	}
-	return pkgs
+func parseUpgradablePackages(output string) []systemPackage {
+	return executor.ParseSystemPackageCandidates(output)
 }

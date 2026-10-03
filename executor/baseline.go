@@ -20,7 +20,7 @@ func EnsureWordPressBaseline() {
 func ensurePHPBaseline() {
 	changed, err := EnsurePHPRuntimeConfigFile()
 	if err == nil && changed {
-		exec.Command("systemctl", "reload", "php8.3-fpm").Run()
+		exec.Command("systemctl", "reload", PHPFPMService()).Run()
 	}
 }
 

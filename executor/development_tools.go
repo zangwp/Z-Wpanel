@@ -35,15 +35,17 @@ type DevelopmentToolStatus struct {
 	Installed   bool   `json:"installed"`
 	Version     string `json:"version"`
 	Recommended bool   `json:"recommended"`
+	State       string `json:"state"`
 }
 
 func DevelopmentToolsStatus(ctx context.Context) []DevelopmentToolStatus {
-	wpVersion, wpInstalled := wpCLICommandVersion(ctx, wpCLIInstallPath)
-	nodeVersion, nodeInstalled := commandVersion(ctx, "node", "--version")
-	_, npmInstalled := commandVersion(ctx, "npm", "--version")
+	wpVersion, wpState := inspectDevelopmentCommand(ctx, wpCLIInstallPath, "--allow-root", "--version")
+	nodeVersion, nodeState := inspectDevelopmentCommand(ctx, "node", "--version")
+	_, npmState := inspectDevelopmentCommand(ctx, "npm", "--version")
+	combined := combinedDevelopmentState(nodeState, npmState)
 	return []DevelopmentToolStatus{
-		{ID: "wp-cli", Name: "WP-CLI", Installed: wpInstalled, Version: wpVersion, Recommended: true},
-		{ID: "nodejs", Name: "Node.js + npm", Installed: nodeInstalled && npmInstalled, Version: nodeVersion, Recommended: false},
+		{ID: "wp-cli", Name: "WP-CLI", Installed: wpState == "installed", State: wpState, Version: wpVersion, Recommended: true},
+		{ID: "nodejs", Name: "Node.js + npm", Installed: combined == "installed", State: combined, Version: nodeVersion, Recommended: false},
 	}
 }
 
@@ -52,19 +54,8 @@ func wpCLICommandVersion(ctx context.Context, binary string) (string, bool) {
 }
 
 func commandVersion(ctx context.Context, binary string, args ...string) (string, bool) {
-	path := binary
-	if !filepath.IsAbs(path) {
-		var err error
-		path, err = exec.LookPath(binary)
-		if err != nil {
-			return "", false
-		}
-	}
-	out, err := exec.CommandContext(ctx, path, args...).CombinedOutput()
-	if err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(string(out)), true
+	version, state := inspectDevelopmentCommand(ctx, binary, args...)
+	return version, state == "installed"
 }
 
 func InstallDevelopmentTool(ctx context.Context, id string) error {
@@ -119,7 +110,7 @@ func installWPCLI(ctx context.Context) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if out, err := exec.CommandContext(ctx, "/usr/bin/php", tmpPath, "--allow-root", "--version").CombinedOutput(); err != nil || !strings.Contains(string(out), "WP-CLI "+wpCLIVersion) {
+	if out, err := exec.CommandContext(ctx, PHPCLIBinary(), tmpPath, "--allow-root", "--version").CombinedOutput(); err != nil || !strings.Contains(string(out), "WP-CLI "+wpCLIVersion) {
 		return errors.New("downloaded WP-CLI failed version verification")
 	}
 	return os.Rename(tmpPath, wpCLIInstallPath)

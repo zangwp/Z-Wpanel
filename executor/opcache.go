@@ -22,7 +22,7 @@ const opcacheClearTimeout = 30 * time.Second
 func ClearOPcache() error {
 	ctx, cancel := context.WithTimeout(context.Background(), opcacheClearTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "systemctl", "reload", "php8.3-fpm").CombinedOutput()
+	out, err := exec.CommandContext(ctx, "systemctl", "reload", PHPFPMService()).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
