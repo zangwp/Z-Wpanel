@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - 'codex/**'
   pull_request:
 
 permissions:
@@ -68,13 +69,18 @@ jobs:
           sudo bash install.sh --check-platform
           sudo bash "$RUNNER_TEMP/bootstrap.sh" --check-platform
 
-      - name: Validate installer on Debian 13 amd64
-        if: matrix.arch == 'amd64'
+      - name: Validate supported distributions on the native architecture
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD:/src:ro" debian:13 bash /src/install.sh --check-platform
-          docker run --rm -i debian:13 bash -s -- --check-platform < "$RUNNER_TEMP/bootstrap.sh"
+          for image in debian:13 ubuntu:24.04 ubuntu:26.04; do
+            docker run --rm -v "$PWD:/src:ro" "$image" bash /src/install.sh --check-platform
+            docker run --rm -i "$image" bash -s -- --check-platform < "$RUNNER_TEMP/bootstrap.sh"
+          done
+
+      - name: Frontend regressions
+        run: |
+          for check in tests/js/*.cjs; do node "$check"; done
 
       - name: Download and verify Go modules
         shell: bash

@@ -90,7 +90,7 @@ func newDefaultWPPluginPHPRunner(wwwRoot string) (*wpPluginPHPRunner, error) {
 	}
 	return newWPPluginPHPRunner(wpPluginPHPRunnerOptions{
 		wwwRoot: wwwRoot, runtimeRoot: wpPluginUpdateRuntimeRoot,
-		phpPath: wpInventoryPHPPath, envPath: "/usr/bin/env", runuserPath: wpInventoryRunuserPath,
+		phpPath: wpInventoryPHPPath(), envPath: "/usr/bin/env", runuserPath: wpInventoryRunuserPath,
 		phpDir: "/usr/bin", envDir: "/usr/bin", runuserDir: "/usr/sbin",
 		requireRoot: true, ownerUID: 0, ownerGID: 0, lookupUser: user.Lookup, chown: os.Chown, scope: scope,
 	})
@@ -103,7 +103,7 @@ func newDefaultWPThemePHPRunner(wwwRoot string) (*wpPluginPHPRunner, error) {
 	}
 	return newWPPluginPHPRunner(wpPluginPHPRunnerOptions{
 		wwwRoot: wwwRoot, runtimeRoot: wpPluginUpdateRuntimeRoot,
-		phpPath: wpInventoryPHPPath, envPath: "/usr/bin/env", runuserPath: wpInventoryRunuserPath,
+		phpPath: wpInventoryPHPPath(), envPath: "/usr/bin/env", runuserPath: wpInventoryRunuserPath,
 		phpDir: "/usr/bin", envDir: "/usr/bin", runuserDir: "/usr/sbin",
 		componentType: "theme", phpSource: wpThemeUpdatePHPSource,
 		requireRoot: true, ownerUID: 0, ownerGID: 0, lookupUser: user.Lookup, chown: os.Chown, scope: scope,

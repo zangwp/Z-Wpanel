@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const phpExifPackage = "php8.3-exif"
+var phpExifPackage = "php8.3-exif"
 
 // jpegoptimPackage/optipngPackage 是历史图库批量优化依赖的无损压缩二进制，
 // 只影响那一个功能，跟 php8.3-exif（影响新上传处理）互不混淆。
@@ -20,8 +20,9 @@ const optipngPackage = "optipng"
 // 生效。插件侧不查询这个函数的状态——它直接在 PHP 运行时用
 // is_callable('exif_read_data') 判断，装好之后下次页面加载自然可用。
 func EnsurePHPExifExtension() {
+	phpExifPackage = "php" + PHPVersion() + "-exif"
 	ensureAptPackage(phpExifPackage, func() {
-		if err := exec.Command("systemctl", "reload", "php8.3-fpm").Run(); err != nil {
+		if err := exec.Command("systemctl", "reload", PHPFPMService()).Run(); err != nil {
 			log.Printf("[图片优化] %s 补装成功，但重载 php8.3-fpm 失败，需要人工重启使扩展生效: %v", phpExifPackage, err)
 			return
 		}

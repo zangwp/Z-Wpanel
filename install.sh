@@ -3,8 +3,8 @@ set -e
 set -o pipefail
 
 # ============================================================
-# YUB WPanel 安装脚本 — 适用于 Debian 13 / Ubuntu 24.04 LTS，建议使用纯净系统
-# 自动选择当前架构的已签名二进制，并按发行版配置 PHP 8.3 与 APT 源
+# YUB WPanel 安装脚本 — 适用于 Debian 13 / Ubuntu 24.04 LTS / Ubuntu 26.04 LTS，建议使用纯净系统
+# 自动选择当前架构的已签名二进制，并按发行版配置 PHP ${PHP_SERIES} 与 APT 源
 # ============================================================
 
 RED='\033[0;31m'
@@ -64,6 +64,11 @@ ATOMIC_STAGE_PATH=""
 RELEASE_PUBLIC_KEY_HEX="d239d9e3c90fdbcf03f9a6647909eab896400c612b5425a7eba4dd2fb2259877"
 INSTALLER_RELEASE_VERSION="__YUB_WPANEL_RELEASE_VERSION__"
 MIN_PANEL_VERSION="v2.0.1"
+PHP_SERIES="8.5"
+MARIADB_SERIES="13.0"
+MARIADB_APT_KEY_FINGERPRINT="177F4010FE56CA3336300305F1656F24C74CD1D8"
+REDIS_APT_KEY_SHA256="817b5a78358d00ed6b71884d70ad5d2eab9934badca1a34299fdc6a2e4a8ad20"
+MIN_REDIS_PACKAGE_VERSION="6:8.10.2"
 DEBSURY_KEYRING_PACKAGE="debsuryorg-archive-keyring"
 DEBSURY_KEYRING_VERSION="2025.11.18"
 DEBSURY_KEYRING_SHA256="7511384559c9ddf1d5ce5f60be429ae9d4e7d01d9480d6f1b7a30c0810cf8b60"
@@ -99,7 +104,7 @@ assert_supported_platform() {
     for platform_cmd in dpkg head sed tr uname; do
         command -v "$platform_cmd" >/dev/null 2>&1 || log_error "缺少平台检测命令: ${platform_cmd}"
     done
-    [[ -r /etc/os-release ]] || log_error "无法读取 /etc/os-release；仅支持 Debian 13 或 Ubuntu 24.04 LTS（amd64/arm64）"
+    [[ -r /etc/os-release ]] || log_error "无法读取 /etc/os-release；仅支持 Debian 13 或 Ubuntu 24.04 LTS / Ubuntu 26.04 LTS（amd64/arm64）"
     os_id=$(sed -n 's/^ID=//p' /etc/os-release | head -n 1 | tr -d '"')
     version_id=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | head -n 1 | tr -d '"')
     codename=$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release | head -n 1 | tr -d '"')
@@ -107,8 +112,8 @@ assert_supported_platform() {
     dpkg_arch=$(dpkg --print-architecture 2>/dev/null || true)
 
     case "${os_id}:${version_id}:${codename}" in
-        debian:13:trixie|ubuntu:24.04:noble) ;;
-        *) log_error "仅支持 Debian 13 (trixie) 或 Ubuntu 24.04 LTS (noble)，当前系统: ${os_id:-unknown} ${version_id:-unknown} ${codename:-unknown}" ;;
+        debian:13:trixie|ubuntu:24.04:noble|ubuntu:26.04:resolute) ;;
+        *) log_error "仅支持 Debian 13 (trixie) 或 Ubuntu 24.04 LTS / Ubuntu 26.04 LTS (noble)，当前系统: ${os_id:-unknown} ${version_id:-unknown} ${codename:-unknown}" ;;
     esac
     case "$machine" in
         x86_64|amd64) machine="amd64" ;;
@@ -356,7 +361,7 @@ done
 trap installer_exit EXIT
 
 # ============================================================
-# PHP 8.3 源选择（官方源 + 国内镜像多重兜底）
+# PHP ${PHP_SERIES} 源选择（官方源 + 国内镜像多重兜底）
 # ============================================================
 
 set_php_source_meta() {
@@ -1518,8 +1523,7 @@ configure_ubuntu_source() {
     set_ubuntu_source_meta "$source_id" || return 1
     log_info "尝试 Ubuntu 源: ${UBUNTU_SOURCE_LABEL}"
     write_ubuntu_sources "$codename"
-    if apt-get update > "$apt_log" 2>&1 && base_packages_available && \
-       php_package_available php8.3-cli && php_package_available php8.3-fpm; then
+    if apt-get update > "$apt_log" 2>&1 && base_packages_available; then
         rm -f "$apt_log"
         log_info "Ubuntu 源可用: ${UBUNTU_SOURCE_LABEL}"
         return 0
@@ -1542,8 +1546,6 @@ select_ubuntu_source() {
         log_info "使用系统默认 Ubuntu APT 源"
         apt-get update
         base_packages_available || log_error "系统默认 Ubuntu APT 源缺少关键系统包"
-        php_package_available php8.3-cli && php_package_available php8.3-fpm || \
-            log_error "系统默认 Ubuntu APT 源缺少 PHP 8.3；请确认 noble 的 main/universe 仓库已启用"
         return 0
     fi
     for source_id in "${candidates[@]}"; do
@@ -1561,6 +1563,143 @@ select_platform_source() {
         ubuntu) select_ubuntu_source "$PLATFORM_CODENAME" ;;
         *) log_error "内部错误：未知平台 ${PLATFORM_ID:-empty}" ;;
     esac
+}
+
+configure_redis_repository() {
+	local key_download="$INSTALL_WORKDIR/redis-archive-keyring.asc"
+	local keyring="/usr/share/keyrings/yub-wpanel-redis-archive-keyring.asc"
+	local source_file="/etc/apt/sources.list.d/yub-wpanel-redis.sources"
+	local actual=""
+	local candidate=""
+
+	log_info "配置 Redis 官方 APT 仓库（HTTPS + 固定公钥哈希）..."
+	assert_managed_source_target "$source_file"
+	download_file "https://packages.redis.io/gpg" "$key_download" 60 16384 || \
+		log_error "下载 Redis APT 公钥失败"
+	actual=$(sha256sum "$key_download" | awk '{print $1}')
+	[[ "$actual" == "$REDIS_APT_KEY_SHA256" ]] || \
+		log_error "Redis APT 公钥哈希不匹配，拒绝继续"
+	if [[ -L "$keyring" ]] || { [[ -e "$keyring" ]] && [[ ! -f "$keyring" ]]; }; then
+		log_error "Redis APT 公钥路径不是普通文件，拒绝覆盖: $keyring"
+	fi
+	install -o root -g root -m 0644 "$key_download" "$keyring"
+	cat > "$source_file" << REDISSOURCEEOF
+# Managed by YUB WPanel
+Types: deb
+URIs: https://packages.redis.io/deb
+Suites: ${PLATFORM_CODENAME}
+Components: main
+Signed-By: ${keyring}
+REDISSOURCEEOF
+	APT_SOURCES_MUTATED=true
+	apt-get update
+	apt_package_available redis-server || \
+		log_error "Redis 官方仓库缺少 redis-server（${PLATFORM_CODENAME}/${PLATFORM_ARCH}）"
+	if ! candidate=$(apt_candidate_version redis-server); then
+		log_error "无法读取 Redis APT 候选版本"
+	fi
+	[[ -n "$candidate" ]] && [[ "$candidate" != "(none)" ]] || \
+		log_error "无法解析 Redis APT 候选版本"
+	dpkg --compare-versions "$candidate" ge "$MIN_REDIS_PACKAGE_VERSION" || \
+		log_error "Redis APT 候选版本 ${candidate} 低于所需稳定版本 8.10.2"
+}
+
+configure_mariadb_repository() {
+	local key_download="$INSTALL_WORKDIR/mariadb-keyring-2019.gpg"
+	local keyring="/usr/share/keyrings/yub-wpanel-mariadb-archive-keyring.gpg"
+	local source_file="/etc/apt/sources.list.d/yub-wpanel-mariadb.sources"
+	local fingerprints=""
+	local candidate=""
+	log_info "配置全新安装默认 MariaDB ${MARIADB_SERIES} 官方 APT 仓库..."
+	assert_managed_source_target "$source_file"
+	download_file "https://supplychain.mariadb.com/mariadb-keyring-2019.gpg" "$key_download" 60 1048576 || \
+		log_error "下载 MariaDB APT 公钥失败"
+	fingerprints=$(gpg --batch --show-keys --with-colons "$key_download" 2>/dev/null | awk -F: '$1 == "fpr" {print toupper($10)}')
+	grep -Fxq "$MARIADB_APT_KEY_FINGERPRINT" <<< "$fingerprints" || \
+		log_error "MariaDB APT 公钥指纹不匹配，拒绝继续"
+	install -o root -g root -m 0644 "$key_download" "$keyring"
+	cat > "$source_file" << MARIADBSOURCEEOF
+# Managed by YUB WPanel
+Types: deb
+URIs: https://mirror.mariadb.org/repo/${MARIADB_SERIES}/${PLATFORM_ID}
+Suites: ${PLATFORM_CODENAME}
+Components: main
+Signed-By: ${keyring}
+MARIADBSOURCEEOF
+	APT_SOURCES_MUTATED=true
+	apt-get update
+	if ! candidate=$(apt_candidate_version mariadb-server); then
+		log_error "无法读取 MariaDB APT 候选版本"
+	fi
+	[[ "$candidate" == *"${MARIADB_SERIES}."* ]] || \
+		log_error "MariaDB 官方仓库未提供 ${MARIADB_SERIES} 候选包（${PLATFORM_CODENAME}/${PLATFORM_ARCH}）"
+	log_info "MariaDB ${MARIADB_SERIES} 官方候选包可用: $candidate"
+}
+
+apt_candidate_version() { LC_ALL=C apt-cache policy "$1" | awk '$1 == "Candidate:" {print $2; exit}'; }
+
+install_verified_apt_key() {
+    local url="$1" fingerprint="$2" target="$3" download="$INSTALL_WORKDIR/repo-key.asc"
+    local fingerprints=""
+    [[ ! -L "$target" ]] && { [[ ! -e "$target" ]] || [[ -f "$target" ]]; } || log_error "不安全的 APT 公钥路径: $target"
+    download_file "$url" "$download" 60 1048576 || log_error "下载 APT 公钥失败"
+    fingerprints=$(gpg --batch --show-keys --with-colons "$download" | awk -F: '$1 == "fpr" {print toupper($10)}')
+    grep -Fxq "$fingerprint" <<< "$fingerprints" || log_error "APT 公钥指纹不匹配"
+    gpg --batch --yes --dearmor --output "$INSTALL_WORKDIR/repo-key.gpg" "$download"
+    install -o root -g root -m 0644 "$INSTALL_WORKDIR/repo-key.gpg" "$target"
+}
+
+configure_ubuntu_php_repository() {
+    local source_file="/etc/apt/sources.list.d/yub-wpanel-php.sources"
+    local keyring="/usr/share/keyrings/yub-wpanel-ubuntu-php.gpg"
+    [[ "$PLATFORM_CODENAME" == "noble" ]] || log_error "PHP PPA 仅用于 Ubuntu 24.04；禁止混用发行版"
+    assert_managed_source_target "$source_file"
+    install_verified_apt_key "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xB8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6" "B8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6" "$keyring"
+    cat > "$source_file" << PHPUBUNTUEOF
+# Managed by YUB WPanel
+Types: deb
+URIs: https://ppa.launchpadcontent.net/ondrej/php/ubuntu
+Suites: ${PLATFORM_CODENAME}
+Components: main
+Signed-By: ${keyring}
+PHPUBUNTUEOF
+    APT_SOURCES_MUTATED=true
+    apt-get update
+}
+
+configure_nginx_repository() {
+    local source_file="/etc/apt/sources.list.d/yub-wpanel-nginx.sources"
+    local keyring="/usr/share/keyrings/yub-wpanel-nginx.gpg"
+    local pin_file="/etc/apt/preferences.d/yub-wpanel-nginx"
+    assert_managed_source_target "$source_file"
+    assert_managed_source_target "$pin_file"
+    install_verified_apt_key "https://nginx.org/keys/nginx_signing.key" "573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62" "$keyring"
+    cat > "$source_file" << NGINXREPOEOF
+# Managed by YUB WPanel
+Types: deb
+URIs: https://nginx.org/packages/${PLATFORM_ID}
+Suites: ${PLATFORM_CODENAME}
+Components: nginx
+Signed-By: ${keyring}
+NGINXREPOEOF
+    cat > "$pin_file" << 'NGINXPINEOF'
+# Managed by YUB WPanel
+Package: nginx*
+Pin: origin nginx.org
+Pin-Priority: 900
+NGINXPINEOF
+    APT_SOURCES_MUTATED=true
+    apt-get update
+    local candidate
+    candidate=$(apt_candidate_version nginx)
+    dpkg --compare-versions "$candidate" ge "1.30.5" || log_error "Nginx 稳定仓库候选版本不可用"
+}
+
+preserve_existing_php_series() {
+    local series=""
+    [[ -f "$CONFIG_FILE" ]] && [[ ! -L "$CONFIG_FILE" ]] || return 0
+    series=$(sed -n 's|.*"php_fpm_pool"[[:space:]]*:[[:space:]]*"/etc/php/\(8\.[0-9]*\)/fpm/pool.d".*|\1|p' "$CONFIG_FILE")
+    case "$series" in 8.3|8.4|8.5) PHP_SERIES="$series";; "") ;; *) log_error "无法识别原 PHP-FPM 配置，停止修改";; esac
 }
 
 configure_php_source() {
@@ -1626,8 +1765,8 @@ PHPSOURCESEOF
     APT_SOURCES_MUTATED=true
 
     if apt-get update > "$apt_log" 2>&1 && \
-        php_package_available php8.3-cli && \
-        php_package_available php8.3-fpm; then
+        php_package_available php${PHP_SERIES}-cli && \
+        php_package_available php${PHP_SERIES}-fpm; then
         rm -f "$apt_log"
         log_info "PHP 源可用: ${PHP_SOURCE_LABEL}"
         return 0
@@ -1647,9 +1786,12 @@ select_php_source() {
     local source_id=""
 
     if [[ "$PLATFORM_ID" == "ubuntu" ]]; then
-        php_package_available php8.3-cli && php_package_available php8.3-fpm || \
-            log_error "Ubuntu 24.04 系统源缺少 PHP 8.3 软件包"
-        log_info "Ubuntu 24.04 使用系统原生 PHP 8.3 软件包，不添加 Debian Sury 源"
+        if [[ "$PLATFORM_CODENAME" == "noble" ]]; then
+            configure_ubuntu_php_repository
+        fi
+        php_package_available "php${PHP_SERIES}-cli" && php_package_available "php${PHP_SERIES}-fpm" || \
+            log_error "Ubuntu ${PLATFORM_VERSION} 缺少 PHP ${PHP_SERIES}；请启用 main/universe 与安全更新源"
+        log_info "Ubuntu ${PLATFORM_VERSION} 使用 PHP ${PHP_SERIES}（26.04 使用原生安全更新包）"
         return 0
     fi
 
@@ -1676,10 +1818,14 @@ select_php_source() {
         fi
     done
 
-    log_error "所有 PHP 8.3 源均不可用。请检查网络、DNS、证书时间，或稍后重试。"
+    log_error "所有 PHP ${PHP_SERIES} 源均不可用。请检查网络、DNS、证书时间，或稍后重试。"
 }
 
 restore_managed_apt_sources() {
+ remove_managed_source_file /etc/apt/sources.list.d/yub-wpanel-nginx.sources
+ remove_managed_source_file /etc/apt/preferences.d/yub-wpanel-nginx
+ remove_managed_source_file /etc/apt/sources.list.d/yub-wpanel-mariadb.sources
+ remove_managed_source_file /etc/apt/sources.list.d/yub-wpanel-redis.sources
     local original=""
     local backup=""
     local disabled=""
@@ -1752,7 +1898,7 @@ cleanup_yub_runtime_integrations() {
         /etc/systemd/system/yubwpanel-whitelist.service \
         /etc/systemd/system/timers.target.wants/yubwpanel-whitelist.timer \
         /etc/systemd/system/nginx.service.d/yub-wpanel.conf \
-        /etc/systemd/system/php8.3-fpm.service.d/yub-wpanel.conf \
+        /etc/systemd/system/php${PHP_SERIES}-fpm.service.d/yub-wpanel.conf \
         /etc/systemd/system/mariadb.service.d/yub-wpanel.conf \
         /etc/systemd/system/redis-server.service.d/yub-wpanel.conf \
         /etc/fail2ban/jail.d/yubwpanel.conf \
@@ -1809,6 +1955,7 @@ remove_managed_panel_command() {
 }
 
 do_uninstall() {
+ preserve_existing_php_series()
     echo ""
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${YELLOW}  普通卸载将永久删除 /www/server/panel 全部内容，包括：${NC}"
@@ -1847,20 +1994,21 @@ do_uninstall() {
     log_info "  - /www/wwwlogs（网站日志）"
     log_info "  - /www/server/certificates（站点 SSL 证书，不包括已删除的面板 TLS 身份）"
     log_info "  - /etc/nginx/sites-available 与 sites-enabled（站点 Nginx 配置）"
-    log_info "  - /etc/php/8.3/fpm/pool.d（站点 PHP-FPM pools）"
+    log_info "  - /etc/php/${PHP_SERIES}/fpm/pool.d（站点 PHP-FPM pools）"
     log_info "  - MariaDB 数据库"
     log_info "  - 系统软件包（nginx/php/mariadb/redis/fail2ban）"
 }
 
 do_purge() {
+ preserve_existing_php_series()
     echo ""
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${RED}  高风险警告：彻底清空会删除下列数据和配置：${NC}"
     echo -e "  - /etc/nginx/sites-enabled/* 和 sites-available/*（全部 Nginx site 配置）"
-    echo -e "  - /etc/php/8.3/fpm/pool.d/*.conf（全部 PHP-FPM pools）"
+    echo -e "  - /etc/php/${PHP_SERIES}/fpm/pool.d/*.conf（全部 PHP-FPM pools）"
     echo -e "  - /www/wwwroot、/www/wwwlogs、/www/server/certificates"
     echo -e "  - /www/server/panel（面板状态、凭据、备份和共享安装包缓存）"
-    echo -e "  - 共享系统软件：Nginx、PHP 8.3、MariaDB、Redis、Fail2ban"
+    echo -e "  - 共享系统软件：Nginx、PHP ${PHP_SERIES}、MariaDB、Redis、Fail2ban"
     echo -e "${RED}  这些目录和软件可能同时被非 YUB 工作负载使用；操作可能使其停机或永久丢失数据。${NC}"
     echo -e "${RED}  此操作不可逆。${NC}"
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -1881,7 +2029,7 @@ do_purge() {
     echo -e "  → 停止所有服务..."
     systemctl stop yub-wpanel 2>/dev/null || true
     systemctl stop nginx 2>/dev/null || true
-    systemctl stop php8.3-fpm 2>/dev/null || true
+    systemctl stop php${PHP_SERIES}-fpm 2>/dev/null || true
     systemctl stop mariadb 2>/dev/null || true
     systemctl stop redis-server 2>/dev/null || true
     systemctl stop fail2ban 2>/dev/null || true
@@ -1894,11 +2042,11 @@ do_purge() {
     echo -e "  → 清理网站 Nginx 和 PHP-FPM 配置..."
     rm -f /etc/nginx/sites-enabled/*
     rm -f /etc/nginx/sites-available/*
-    rm -f /etc/php/8.3/fpm/pool.d/*.conf
+    rm -f /etc/php/${PHP_SERIES}/fpm/pool.d/*.conf
     echo -e "  ${GREEN}✓${NC} 配置已清理"
 
     echo -e "  → 卸载软件包（可能需要 1-2 分钟）..."
-    DEBIAN_FRONTEND=noninteractive apt-get purge -y nginx nginx-common mariadb-server mariadb-common redis-server fail2ban php8.3-* 2>/dev/null || true
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y nginx nginx-common mariadb-server mariadb-common redis-server fail2ban php${PHP_SERIES}-* 2>/dev/null || true
     DEBIAN_FRONTEND=noninteractive apt-get autoremove -y 2>/dev/null || true
     echo -e "  ${GREEN}✓${NC} 软件包已卸载"
 
@@ -2060,6 +2208,7 @@ fi
 assert_panel_command_paths_available
 
 if $REPAIR_MODE; then
+ preserve_existing_php_series()
     prepare_panel_candidate
     verify_complete_release_bundle || \
         log_error "repair执行前面板与许可发布包完整性复核失败"
@@ -2180,8 +2329,11 @@ select_platform_source
 # 安装基础依赖
 apt-get install -y curl wget unzip ca-certificates gnupg lsb-release
 
-# Debian 13 使用校验后安装的 Sury keyring；Ubuntu 24.04 使用原生 PHP 8.3。
+# Debian 13 使用 Sury；Ubuntu 24.04 使用 PHP PPA；Ubuntu 26.04 使用原生 PHP 8.5。
 select_php_source "$PLATFORM_CODENAME"
+configure_nginx_repository
+configure_mariadb_repository
+configure_redis_repository
 
 # ============================================================
 # 安装基础组件
@@ -2198,21 +2350,23 @@ apt-get install -y \
     sshpass \
     rsyslog \
     cron \
-    php8.3-fpm \
-    php8.3-mysql \
-    php8.3-curl \
-    php8.3-gd \
-    php8.3-exif \
+    php${PHP_SERIES}-fpm \
+    php${PHP_SERIES}-mysql \
+    php${PHP_SERIES}-curl \
+    php${PHP_SERIES}-gd \
     jpegoptim \
     optipng \
-    php8.3-mbstring \
-    php8.3-xml \
-    php8.3-zip \
-    php8.3-intl \
-    php8.3-redis \
-    php8.3-opcache \
-    php8.3-cli
+    php${PHP_SERIES}-mbstring \
+    php${PHP_SERIES}-xml \
+    php${PHP_SERIES}-zip \
+    php${PHP_SERIES}-intl \
+    php${PHP_SERIES}-redis \
+    php${PHP_SERIES}-cli
 
+"php${PHP_SERIES}" -m > "$INSTALL_WORKDIR/php-modules.txt"
+for module in curl dom exif fileinfo gd intl mbstring mysqli openssl pdo_mysql redis SimpleXML xml xmlreader xmlwriter zip "Zend OPcache"; do
+ grep -Fxq "$module" "$INSTALL_WORKDIR/php-modules.txt" || log_error "PHP ${PHP_SERIES} 缺少扩展: $module"
+done
 log_info "基础组件安装完成"
 else
     log_info "repair模式保留APT源和现有软件包，不执行安装或升级"
@@ -2229,7 +2383,7 @@ fi
 log_info "配置 systemd 进程守护..."
 
 if ! $REPAIR_MODE; then
-for svc in nginx php8.3-fpm mariadb redis-server; do
+for svc in nginx php${PHP_SERIES}-fpm mariadb redis-server; do
     DROPDIR="/etc/systemd/system/${svc}.service.d"
     mkdir -p "$DROPDIR"
     cat > "$DROPDIR/yub-wpanel.conf" << SYSTEMDEOF
@@ -2245,7 +2399,7 @@ done
 systemctl daemon-reload
 log_info "systemd 进程守护配置完成"
 
-systemctl_start_required php8.3-fpm
+systemctl_start_required php${PHP_SERIES}-fpm
 systemctl_start_required nginx
 else
     log_info "repair模式保留Nginx、PHP-FPM、MariaDB和Redis的systemd配置与状态"
@@ -2257,7 +2411,13 @@ fi
 log_info "配置 Nginx 基础..."
 
 if ! $REPAIR_MODE; then
-mkdir -p /etc/nginx/conf.d
+mkdir -p /etc/nginx/conf.d /etc/nginx/sites-available /etc/nginx/sites-enabled
+# nginx.org packages load conf.d, while site paths stay compatible with older installations.
+# A distro Nginx configuration may already include sites-enabled. Avoid loading every vhost twice.
+if ! grep -Eq '^[[:space:]]*include[[:space:]]+/etc/nginx/sites-enabled/\*;' /etc/nginx/nginx.conf; then
+    assert_managed_source_target /etc/nginx/conf.d/yubwpanel-sites.conf
+    printf '# Managed by YUB WPanel\ninclude /etc/nginx/sites-enabled/*;\n' > /etc/nginx/conf.d/yubwpanel-sites.conf
+fi
 
 cat > /etc/nginx/conf.d/yubwpanel-ratelimit.conf << 'RATELIMITEOF'
 # YUB WPanel — 请求频率限制
@@ -2462,8 +2622,8 @@ generate_bcrypt_hash() {
     local password="$1"
     local hash=""
 
-    if command -v php8.3 &>/dev/null; then
-        hash=$(printf '%s' "$password" | php8.3 -r \
+    if command -v php${PHP_SERIES} &>/dev/null; then
+        hash=$(printf '%s' "$password" | php${PHP_SERIES} -r \
             '$password = stream_get_contents(STDIN); echo password_hash($password, PASSWORD_BCRYPT, ["cost" => 12]);' \
             2>/dev/null || true)
     fi
@@ -2530,7 +2690,7 @@ cat > "$CONFIG_FILE" << CONFIGEOF
     "www_logs": "/www/wwwlogs",
     "nginx_sites_available": "/etc/nginx/sites-available",
     "nginx_sites_enabled": "/etc/nginx/sites-enabled",
-    "php_fpm_pool": "/etc/php/8.3/fpm/pool.d",
+    "php_fpm_pool": "/etc/php/${PHP_SERIES}/fpm/pool.d",
     "php_fpm_sock": "/run/php",
     "certificates": "/www/server/certificates",
     "wordpress_package": "$INSTALL_DIR/packages/wordpress.zip",
@@ -2748,7 +2908,7 @@ echo -e "  3. 查看面板日志 / View panel logs: ${BOLD}journalctl -u yub-wpa
 echo ""
 echo -e "${BOLD}软件安装路径 / Installed Paths:${NC}"
 echo -e "  Nginx:      /etc/nginx/"
-echo -e "  PHP-FPM:    /etc/php/8.3/fpm/"
+echo -e "  PHP-FPM:    /etc/php/${PHP_SERIES}/fpm/"
 echo -e "  MariaDB:    /etc/mysql/"
 echo -e "  Redis:      /etc/redis/"
 echo -e "  面板程序 / Panel binary: /usr/local/bin/yub-wpanel"

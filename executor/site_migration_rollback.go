@@ -37,7 +37,7 @@ func (o productionSiteMigrationTargetRollbackOps) StopRuntime(spec siteMigration
 			return err
 		}
 	}
-	if output, err := executeCommand("systemctl", "reload", "php8.3-fpm"); err != nil {
+	if output, err := executeCommand("systemctl", "reload", PHPFPMService()); err != nil {
 		return fmt.Errorf("reload PHP-FPM after migration rollback: %s", strings.TrimSpace(output))
 	}
 	return nil

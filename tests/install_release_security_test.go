@@ -405,14 +405,14 @@ func TestInstallerPlatformAndArtifactPreflightPrecedeSystemWrites(t *testing.T) 
 		t.Fatalf("early safety order invalid: platform=%d workdir=%d artifact=%d first_system_write=%d", platform, workdir, artifact, lock)
 	}
 	for _, required := range []string{
-		`debian:13:trixie|ubuntu:24.04:noble) ;;`,
+		`debian:13:trixie|ubuntu:24.04:noble|ubuntu:26.04:resolute) ;;`,
 		`x86_64|amd64) machine="amd64" ;;`,
 		`aarch64|arm64) machine="arm64" ;;`,
 		`amd64|arm64) ;;`,
 		`[[ "$machine" == "$dpkg_arch" ]]`,
 		`PANEL_ASSET_NAME="yub-wpanel-linux-${PLATFORM_ARCH}"`,
 		`select_platform_source`,
-		`Ubuntu 24.04 使用系统原生 PHP 8.3`,
+		`26.04 使用原生安全更新包`,
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("install.sh missing platform restriction %q", required)
@@ -441,7 +441,7 @@ func TestInstallerUsesSeparateRestorableDistributionSources(t *testing.T) {
 		`DEBIAN_REPO_URL="https://mirrors.tuna.tsinghua.edu.cn/debian"`,
 		`DEBIAN_REPO_URL="https://deb.debian.org/debian"`,
 		`DEBIAN_SECURITY_URL="https://security.debian.org/debian-security"`,
-		`Ubuntu 24.04 使用系统原生 PHP 8.3 软件包`,
+		`PHP PPA 仅用于 Ubuntu 24.04`,
 		`# Managed by YUB WPanel`,
 		`assert_managed_source_target /etc/apt/sources.list.d/yub-wpanel-php.sources`,
 		`remove_managed_source_file /etc/apt/sources.list.d/yub-wpanel-debian.sources`,

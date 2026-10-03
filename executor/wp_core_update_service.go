@@ -406,7 +406,7 @@ func defaultWPCoreOfferFetcher(client *http.Client) wpCoreOfferFetcher {
 }
 
 func defaultWPCoreInstalledVersions(ctx context.Context) (string, string, error) {
-	php, err := validateInventoryBinary(wpInventoryPHPPath, "/usr/bin", 0, 0)
+	php, err := validateInventoryBinary(wpInventoryPHPPath(), "/usr/bin", 0, 0)
 	if err != nil {
 		return "", "", err
 	}

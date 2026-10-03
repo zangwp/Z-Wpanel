@@ -49,17 +49,20 @@ var phpOpcacheStaticDefaults = map[string]string{
 }
 
 func PHPRuntimeConfigPath() string {
+	if phpRuntimeConfigPath == "/etc/php/8.3/fpm/conf.d/99-yubwpanel.ini" {
+		return "/etc/php/" + PHPVersion() + "/fpm/conf.d/99-yubwpanel.ini"
+	}
 	return phpRuntimeConfigPath
 }
 
 func EnsurePHPRuntimeConfigFile() (bool, error) {
-	data, err := os.ReadFile(phpRuntimeConfigPath)
+	data, err := os.ReadFile(PHPRuntimeConfigPath())
 	if err != nil && !os.IsNotExist(err) {
 		return false, err
 	}
 
 	if os.IsNotExist(err) {
-		return true, os.WriteFile(phpRuntimeConfigPath, []byte(defaultPHPRuntimeConfigContent()), 0644)
+		return true, os.WriteFile(PHPRuntimeConfigPath(), []byte(defaultPHPRuntimeConfigContent()), 0644)
 	}
 
 	content := string(data)
@@ -83,7 +86,7 @@ func EnsurePHPRuntimeConfigFile() (bool, error) {
 	if next == content {
 		return false, nil
 	}
-	return true, os.WriteFile(phpRuntimeConfigPath, []byte(next), 0644)
+	return true, os.WriteFile(PHPRuntimeConfigPath(), []byte(next), 0644)
 }
 
 // recommendedOpcacheAdaptiveDefaults 计算 opcache.memory_consumption（MB）和
@@ -97,7 +100,7 @@ func recommendedOpcacheAdaptiveDefaults() (memoryConsumptionMB string, maxAccele
 
 func LoadPHPRuntimeConfig() PHPRuntimeConfig {
 	cfg := phpRuntimeDefaults
-	data, err := os.ReadFile(phpRuntimeConfigPath)
+	data, err := os.ReadFile(PHPRuntimeConfigPath())
 	if err != nil {
 		return cfg
 	}

@@ -31,11 +31,11 @@ import (
 )
 
 const (
-	wpInventoryProtocol         = "yub-wpanel-inventory"
-	wpInventoryRunnerVersion    = "1"
-	wpInventorySchemaVersion    = 1
-	wpInventoryRunnerRoot       = "/var/yub-wpanel/runners/wp-inventory"
-	wpInventoryPHPPath          = "/usr/bin/php8.3"
+	wpInventoryProtocol      = "yub-wpanel-inventory"
+	wpInventoryRunnerVersion = "1"
+	wpInventorySchemaVersion = 1
+	wpInventoryRunnerRoot    = "/var/yub-wpanel/runners/wp-inventory"
+
 	wpInventoryRunuserPath      = "/usr/sbin/runuser"
 	wpInventoryLockWait         = 10 * time.Second
 	wpInventoryExecutionTimeout = 5 * time.Second
@@ -257,7 +257,7 @@ type WPInventoryRunner struct {
 func NewWPInventoryRunner() (*WPInventoryRunner, error) {
 	return newWPInventoryRunner(wpInventoryRunnerOptions{
 		source: wpInventoryRunnerSource, runnerRoot: wpInventoryRunnerRoot, trustedRoot: "/var",
-		phpPath: wpInventoryPHPPath, runuserPath: wpInventoryRunuserPath,
+		phpPath: ("/usr/bin/" + PHPCLIBinary()), runuserPath: wpInventoryRunuserPath,
 		phpDir: "/usr/bin", runuserDir: "/usr/sbin",
 		requireRoot: true, ownerUID: 0, ownerGID: 0, lookupUser: user.Lookup, now: time.Now,
 	})

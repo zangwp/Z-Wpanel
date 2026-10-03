@@ -54,7 +54,7 @@ func init() {
 	guard = &ProcessGuard{
 		services: []*GuardService{
 			{Name: "Nginx", ServiceName: "nginx"},
-			{Name: "PHP-FPM", ServiceName: "php8.3-fpm"},
+			{Name: "PHP-FPM", ServiceName: PHPFPMService()},
 			{Name: "MariaDB", ServiceName: "mariadb"},
 			{Name: "Redis", ServiceName: "redis-server"},
 			{Name: "nftables", ServiceName: "nftables"},
@@ -68,6 +68,14 @@ func init() {
 }
 
 func StartProcessGuard() {
+	guard.mu.Lock()
+	for _, svc := range guard.services {
+		if svc.Name == "PHP-FPM" {
+			svc.ServiceName = PHPFPMService()
+		}
+	}
+	guard.mu.Unlock()
+	guard.loadPaused()
 	go guard.loop()
 }
 
@@ -422,7 +430,7 @@ func logIncident(s *GuardService, event, message string, notify bool) {
 
 func isCoreGuardService(service string) bool {
 	switch service {
-	case "nginx", "php8.3-fpm", "mariadb", "redis-server":
+	case "nginx", PHPFPMService(), "mariadb", "redis-server":
 		return true
 	default:
 		return false

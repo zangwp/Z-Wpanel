@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -354,6 +355,7 @@ func main() {
 	if _, err := exec.LookPath("sshpass"); err != nil {
 		log.Println("sshpass 未安装，远程备份密码认证功能不可用；请通过安装脚本或包管理器手动安装")
 	}
+	executor.StartFirewallPortRuleManager()
 	executor.StartProcessGuard()
 	executor.StartAlertMonitor(Version)
 	executor.DefaultWPAnomalyMonitor(cfg)
@@ -395,7 +397,13 @@ func main() {
 	go func() {
 		if useTLS {
 			log.Printf("%s 启动于端口 %d (HTTPS)", config.ProductName, port)
-			serverErr <- server.ListenAndServeTLS(cfg.Panel.TLSCertPath, cfg.Panel.TLSKeyPath)
+			if err := executor.InitializePanelCertificate(cfg.Panel.TLSCertPath, cfg.Panel.TLSKeyPath); err != nil {
+				serverErr <- err
+				return
+			}
+			server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: executor.GetPanelCertificate}
+			executor.StartPanelCertificateRenewal(cfg)
+			serverErr <- server.ListenAndServeTLS("", "")
 			return
 		}
 		log.Printf("%s 启动于端口 %d（HTTP，未配置TLS）", config.ProductName, port)

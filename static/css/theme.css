@@ -240,3 +240,104 @@ html[data-theme="light"] textarea {
         animation-iteration-count: 1 !important;
     }
 }
+
+.sidebar-section-label {
+    padding: 0.9rem 0.75rem 0.3rem;
+    color: var(--panel-muted);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    line-height: 1rem;
+    text-transform: uppercase;
+}
+
+.sidebar-footer {
+    background: color-mix(in srgb, var(--panel-sidebar) 94%, var(--panel-surface-strong));
+}
+
+.panel-layout { height: 100vh; height: 100dvh; }
+.panel-sidebar { min-height: 0; overflow: hidden; }
+.sidebar-brand { flex-shrink: 0; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 4px; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; }
+.sidebar-nav > * { flex-shrink: 0; margin: 0; }
+.sidebar-nav > .sidebar-link { margin: 0; }
+.sidebar-language { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; }
+
+@media (max-height: 980px) {
+    .sidebar-brand { padding: 12px 16px; }
+    .sidebar-nav { gap: 2px; }
+    .panel-sidebar .sidebar-link { font-size: 14px; line-height: 20px; padding-top: 8px; padding-bottom: 8px; }
+    .sidebar-nav .sidebar-section-label { padding-top: 12px; padding-bottom: 4px; }
+    .sidebar-nav .sidebar-section-label:first-child { padding-top: 4px; }
+    .sidebar-footer { padding: 8px 12px; }
+}
+
+@media (max-height: 820px) {
+    .sidebar-nav { gap: 0; padding-top: 8px; padding-bottom: 8px; }
+    .panel-sidebar .sidebar-link { padding-top: 6px; padding-bottom: 6px; }
+    .sidebar-nav .sidebar-section-label { padding-top: 8px; }
+}
+
+/* Small help disclosures work with pointer, keyboard, and touch. */
+.help-tip { display:inline-block; position:relative; vertical-align:middle; margin:0 .35rem; }
+.help-tip > summary { display:inline-flex; align-items:center; justify-content:center; width:1.1rem; height:1.1rem; border:1px solid #64748b; border-radius:50%; color:#94a3b8; cursor:pointer; list-style:none; font-size:.75rem; }
+.help-tip > summary::-webkit-details-marker { display:none; }
+.help-tip > span { display:none; position:absolute; z-index:60; inset-inline-start:0; bottom:calc(100% + .4rem); width:min(19rem,75vw); padding:.65rem; border:1px solid #475569; border-radius:.5rem; background:#0f172a; color:#e2e8f0; font-size:.75rem; line-height:1.5; box-shadow:0 6px 20px #0008; }
+.help-tip[open] > span,.help-tip:hover > span,.help-tip:focus-within > span { display:block; }
+
+.vps-tabs {display:flex;gap:.4rem;background:#101b2b;padding:.4rem;border:1px solid #2d3d52;border-radius:.8rem;width:fit-content;}
+.vps-tabs button {padding:.6rem 1.1rem;color:#94a3b8;border-radius:.5rem;}
+.vps-tabs button.active {background:#2563eb;color:#fff;}
+.vps-actions {display:flex;flex-wrap:wrap;gap:.75rem;}
+.vps-tool-tile {border:1px solid #334155;border-radius:.75rem;padding:1rem;background:#101b2b;}
+.vps-tool-output {white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1320;border:1px solid #334155;border-radius:.65rem;padding:1rem;font-size:.8rem;}
+
+.vps-meter {height:.35rem;background:#29374b;border-radius:999px;overflow:hidden;}
+.vps-meter > span {display:block;height:100%;background:linear-gradient(90deg,#2563eb,#22d3ee);border-radius:999px;transition:width .3s;}
+
+/* Consistent settings headings, helper text and responsive navigation. */
+.workspace-tabs { display:flex; flex-wrap:wrap; gap:8px; border-bottom:1px solid #334155; padding-bottom:8px; }
+.workspace-tabs a { padding:10px 16px; color:#94a3b8; border-radius:8px; }
+.workspace-tabs a.selected { color:#fff; background:#2563eb; }
+.software-field-heading { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:8px; }
+.software-field-heading > span { flex-shrink:0; }
+.software-config-grid { gap:24px; }
+.port-access-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:16px; align-items:start; }
+@media(max-width:767px) { .port-access-grid { grid-template-columns:1fr; } .port-access-grid > div { grid-column:auto; } }
+
+/* Port policy editor: consistent field baselines and mobile stacking. */
+.access-rule{display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1fr) minmax(260px,2fr);gap:16px;align-items:center;padding:16px 0;border-bottom:1px solid #334155}.access-custom{display:flex;flex-wrap:wrap;gap:12px}.access-custom .input-field{width:140px}.access-code{white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;padding:16px;background:#0b1220;margin-top:12px;font-size:12px}.access-preview-list{display:grid;gap:8px}.access-rule .label{margin-bottom:6px}@media(max-width:767px){.access-rule{grid-template-columns:1fr;gap:10px}.access-custom .input-field{width:100%}}
+.cron-jobs{table-layout:fixed;min-width:880px}.cron-jobs .table-cell,.cron-jobs .table-header{padding-left:10px;padding-right:10px;vertical-align:middle}.cron-job-text{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cron-jobs button,.cron-jobs a{white-space:nowrap}
+
+@media(min-width:768px){.access-field-label{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}.access-rule{min-height:76px;padding:14px 0}.access-rule-head{display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1fr) minmax(260px,2fr);gap:16px;padding:12px 0 4px}}@media(max-width:767px){.access-rule-head{display:none}}
+
+.software-tabs {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--panel-surface-strong) 88%, var(--panel-bg));
+}
+
+.software-tabs button {
+    min-width: 6.5rem;
+    padding: 0.55rem 0.9rem;
+    border-radius: 8px;
+    color: var(--panel-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.software-tabs button:hover {
+    color: var(--panel-text);
+    background: var(--panel-accent-soft);
+}
+
+.software-tabs button.active {
+    color: #ffffff;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
+}

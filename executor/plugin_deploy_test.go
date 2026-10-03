@@ -76,7 +76,7 @@ func TestDeployPluginDirectoryFreshInstall(t *testing.T) {
 	pluginsDir := t.TempDir()
 	pluginDir := filepath.Join(pluginsDir, pluginDirName)
 	src := map[string][]byte{
-		"yub-wpanel-optimizer.php":   []byte("<?php // bootstrap\n"),
+		"yub-wpanel-optimizer.php": []byte("<?php // bootstrap\n"),
 		"includes/trait-cache.php": []byte("<?php // cache\n"),
 	}
 	srcWithVersion, version := withVersionMarker(src)
@@ -113,7 +113,7 @@ func TestDeployPluginDirectoryUpdateOverExisting(t *testing.T) {
 	}
 
 	newSrc := map[string][]byte{
-		"yub-wpanel-optimizer.php":   []byte("<?php // new bootstrap\n"),
+		"yub-wpanel-optimizer.php": []byte("<?php // new bootstrap\n"),
 		"includes/trait-cache.php": []byte("<?php // new cache module\n"),
 	}
 
@@ -137,7 +137,7 @@ func TestDeployPluginDirectoryRemovesFilesDroppedFromNewerVersion(t *testing.T) 
 	pluginDir := filepath.Join(pluginsDir, pluginDirName)
 
 	oldSrc := map[string][]byte{
-		"yub-wpanel-optimizer.php":    []byte("<?php // v1\n"),
+		"yub-wpanel-optimizer.php":  []byte("<?php // v1\n"),
 		"includes/trait-legacy.php": []byte("<?php // module removed in v2\n"),
 	}
 	if err := deployPluginDirectory(pluginsDir, pluginDir, oldSrc); err != nil {

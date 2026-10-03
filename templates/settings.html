@@ -3,7 +3,14 @@
 <div x-data="panelSettings()" x-init="fetchSettings()">
     <h2 class="text-xl font-bold text-white mb-6">{{t .Lang "nav.settings"}}</h2>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+    <nav class="software-tabs mb-6" aria-label="{{t .Lang "nav.settings"}}">
+        <button type="button" @click="settingsTab = 'general'" :class="{'active': settingsTab === 'general'}">{{t .Lang "settings.tab_general"}}</button>
+        <button type="button" @click="settingsTab = 'updates'" :class="{'active': settingsTab === 'updates'}">{{t .Lang "settings.tab_updates"}}</button>
+        <button type="button" @click="settingsTab = 'wordpress'" :class="{'active': settingsTab === 'wordpress'}">{{t .Lang "settings.wp_package"}}</button>
+        <button type="button" @click="settingsTab = 'backup'" :class="{'active': settingsTab === 'backup'}">{{t .Lang "settings.panel_db_backup"}}</button>
+        <button type="button" @click="settingsTab = 'logs'" :class="{'active': settingsTab === 'logs'}">{{t .Lang "settings.tab_operation_logs"}}</button>
+    </nav>
+    <div x-show="settingsTab === 'general'" class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
         <div class="card">
             <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.account_security"}}</h3>
 
@@ -85,6 +92,25 @@
                 </div>
             </div>
 
+<section class="card mb-6" x-data="panelCertificateSettings()">
+ <h3 class="text-white font-semibold mb-4">{{t .Lang "settings.panel_domain_https"}}</h3>
+ <label class="label">{{t .Lang "settings.panel_domain"}}</label>
+ <div class="flex flex-wrap gap-2">
+  <input x-model="domain" class="input-field flex-1" placeholder="panel.example.com" :disabled="status.running">
+  <button @click="check()" :disabled="checking || status.running || !domain" class="btn-secondary">{{t .Lang "settings.check_domain"}}</button>
+  <button @click="apply()" :disabled="starting || status.running || !domain" class="btn-primary">{{t .Lang "settings.apply_panel_certificate"}}</button>
+ </div>
+ <p class="text-xs text-gray-400 mt-2">{{t .Lang "settings.panel_domain_help"}}</p>
+ <p x-show="status.running" class="text-sm text-blue-300 mt-3">{{t .Lang "settings.panel_certificate_running"}}</p>
+ <p x-show="message" x-text="message" class="text-sm mt-3" :class="verified ? 'text-green-400' : 'text-red-400'"></p>
+ <p x-show="status.error || status.renewal_error" x-text="status.error || status.renewal_error" class="text-sm text-red-400 mt-3"></p>
+ <a x-show="status.login_url" :href="status.login_url" x-text="status.login_url" target="_blank" rel="noopener noreferrer" class="block text-blue-400 mt-3 break-all"></a>
+ <p x-show="status.expires_at" class="text-xs text-gray-400 mt-2">{{t .Lang "settings.certificate_expiry"}} <span x-text="status.expires_at"></span></p>
+</section>
+        </div>
+    </div>
+
+    <section id="system-updates" x-show="settingsTab === 'updates'" x-cloak class="card mb-6">
             <div class="mb-4">
                 <label class="label">{{t .Lang "settings.github_proxy"}}</label>
                 <p class="text-xs text-gray-500 mb-2">{{t .Lang "settings.github_proxy_help"}}</p>
@@ -196,12 +222,14 @@
                     <button @click="doUpdate()" x-show="count > 0" :disabled="updating" class="btn-primary text-xs" x-text="updating ? t('settings.updating') : t('settings.one_click_update')"></button>
                 </div>
                 <p x-show="count > 0" class="text-xs text-yellow-500 mt-2">{{t .Lang "settings.system_update_warning"}}</p>
-                <p x-show="msg" class="text-sm mt-2" :class="ok ? 'text-green-400' : 'text-red-400'" x-text="msg"></p>
+                <p x-show="msg" class="text-sm mt-2" :class="failed ? 'text-red-400' : (ok ? 'text-green-400' : 'text-blue-300')" x-text="msg"></p>
+                <pre x-show="detail" x-text="detail" class="text-xs text-gray-400 mt-2 whitespace-pre-wrap break-all"></pre>
+                <p x-show="lastMessage" class="text-xs text-gray-400 mt-3"><span x-text="lastMessage"></span> · <span x-text="formatStatusTime(lastUpdatedAt)"></span></p>
             </div>
-        </div>
-    </div>
 
-    <div class="mb-6">
+    </section>
+
+    <div x-show="settingsTab === 'wordpress'" x-cloak class="mb-6">
         <div class="card" x-data="wpPackage()" x-init="fetchStatus()">
             <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.wp_package"}}</h3>
             <p class="text-xs text-gray-500 mb-4">{{t .Lang "settings.wp_package_help"}}</p>
@@ -269,7 +297,7 @@
 
 	</div>
 
-    <div class="card mb-6" x-data="dbBackup()" x-init="init()">
+    <div x-show="settingsTab === 'backup'" x-cloak class="card mb-6" x-data="dbBackup()" x-init="init()">
         <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-white">{{t .Lang "settings.panel_db_backup"}}</h3>
             <div class="flex items-center space-x-2">
@@ -309,7 +337,7 @@
         </div>
     </div>
 
-    <div class="card" x-data="operationLogs()" x-init="fetchLogs()">
+    <div x-show="settingsTab === 'logs'" x-cloak class="card" x-data="operationLogs()" x-init="fetchLogs()">
         <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.recent_operation_logs"}}</h3>
         <div class="overflow-x-auto">
             <table class="w-full">
@@ -448,6 +476,7 @@ function wpPackage() {
 }
 function panelSettings() {
     return {
+        settingsTab: typeof location !== "undefined" && location.hash === "#system-updates" ? "updates" : "general",
         panelTitle: 'YUB WPanel',
         username: '',
         basicAuthUser: '',
@@ -871,17 +900,40 @@ function operationLogs() {
 function systemUpdate() {
     return {
         packages: [],
+        filter: 'all',
+        listOpen: false,
         count: 0,
         checked: false,
         checking: false,
         updating: false,
         msg: '',
         ok: false,
+        failed: false,
+        remainingCount: 0,
+        detail: '',
+        stage: '',
         distribution: '',
         packageCatalogURL: '',
         pollTimer: null,
+        successTimer: null,
+        lastMessage: '',
+        lastUpdatedAt: '',
+        isSecurity(pkg) {
+            return String(pkg && pkg.repo || '').toLowerCase().includes('security');
+        },
+        get securityCount() {
+            return this.packages.filter(pkg => this.isSecurity(pkg)).length;
+        },
+        get regularCount() {
+            return this.packages.length - this.securityCount;
+        },
+        get filteredPackages() {
+            if (this.filter === 'security') return this.packages.filter(pkg => this.isSecurity(pkg));
+            if (this.filter === 'regular') return this.packages.filter(pkg => !this.isSecurity(pkg));
+            return this.packages;
+        },
         init() {
-            this.resume();
+            this.resume(true);
             this.scheduleCheck();
         },
         scheduleCheck() {
@@ -904,47 +956,121 @@ function systemUpdate() {
         packageDetailsURL(name) {
             return this.packageCatalogURL + encodeURIComponent(name);
         },
-        async resume() {
+        async resume(initial = false) {
             this.pollTimer = null;
             try {
                 const r = await api('/system/updates/status');
                 if (!r.success || !r.data) return;
-                this.applyStatus(r.data);
+                this.applyStatus(r.data, initial);
             } catch(e) {
                 console.error('system update status error:', e);
                 if (this.updating && !this.pollTimer) {
-                    this.pollTimer = setTimeout(() => this.resume(), 3000);
+                    this.pollTimer = setTimeout(() => this.resume(false), 3000);
                 }
             }
         },
-        applyStatus(status) {
+        applyStatus(status, initial = false) {
+            const wasUpdating = this.updating;
+            if (status.status !== 'success') {
+                clearTimeout(this.successTimer);
+                this.successTimer = null;
+            }
             this.updating = status.status === 'running';
-            if (status.status !== 'idle') {
+            this.failed = status.status === 'failed';
+            this.remainingCount = Number(status.remaining_count || 0);
+            this.detail = status.detail || '';
+            this.stage = status.stage || '';
+            if (status.status === 'idle') {
+                this.dismissStatus();
+                this.lastMessage = '';
+                this.lastUpdatedAt = '';
+                return;
+            }
+            if (status.status === 'success' || status.status === 'failed') {
+                this.lastMessage = status.message || '';
+                this.lastUpdatedAt = status.updated_at || '';
+            }
+            this.ok = status.status === 'success' && this.remainingCount === 0;
+            if (status.status === 'success' && initial && !wasUpdating && this.remainingCount === 0) {
+                this.msg = '';
+                this.detail = '';
+                this.stage = '';
+            } else {
                 this.msg = status.message || '';
-                this.ok = status.status === 'success';
             }
             if (this.updating) {
+                clearTimeout(this.successTimer);
                 clearTimeout(this.pollTimer);
                 this.pollTimer = setTimeout(() => {
                     this.pollTimer = null;
-                    this.resume();
+                    this.resume(false);
                 }, 1500);
             } else if (status.status === 'success') {
                 this.check(true);
+                if (this.msg && this.remainingCount === 0) this.scheduleSuccessDismiss();
+                else if (this.remainingCount > 0) { clearTimeout(this.successTimer); this.successTimer = null; }
             }
+        },
+        scheduleSuccessDismiss() {
+            clearTimeout(this.successTimer);
+            this.successTimer = setTimeout(() => this.dismissStatus(), 10000);
+        },
+        dismissStatus() {
+            clearTimeout(this.successTimer);
+            this.successTimer = null;
+            this.msg = '';
+            this.detail = '';
+            this.stage = '';
+            this.ok = false;
+            this.failed = false;
+        },
+        formatStatusTime(value) {
+            if (!value) return '';
+            const parsed = new Date(value);
+            if (Number.isNaN(parsed.getTime())) return value;
+            return parsed.toLocaleString();
         },
         async doUpdate() {
             if (!await confirmModal(t('settings.confirm_system_update'))) return;
+            clearTimeout(this.successTimer);
+            this.successTimer = null;
             this.updating = true;
             this.ok = false;
+            this.failed = false;
+            this.detail = '';
+            this.stage = 'queued';
+            this.remainingCount = 0;
             this.msg = t('settings.system_update_status_queued');
             try {
                 const r = await api('/system/updates/do', { method: 'POST' });
-                if (r.success) this.applyStatus(r.data);
-            } catch(e) { this.ok = false; this.msg = e.message; }
+                if (r.success) this.applyStatus(r.data, false);
+            } catch(e) {
+                await this.resume(false);
+                if (!this.failed) {
+                    this.ok = false;
+                    this.failed = true;
+                    this.detail = e.message;
+                    this.msg = e.message;
+                }
+            }
             if (!this.pollTimer) this.updating = false;
         }
     }
 }
+</script>
+
+
+<script>
+function panelCertificateSettings() {
+ return {
+  domain:'', status:{running:false}, timer:null, refreshing:false, checking:false, starting:false, message:'', verified:false,
+  async init(){await this.refresh();this.domain=this.status.domain || '';this.timer=setInterval(()=>{if(!document.hidden)this.refresh();},30000);},
+  destroy(){if(this.timer)clearInterval(this.timer);},
+  async refresh(){if(this.refreshing)return;this.refreshing=true;try{const r=await api('/settings/panel-certificate');this.status=r.data || {};}catch(e){this.message=e.message;this.verified=false;}finally{this.refreshing=false;}},
+  async check(){this.checking=true;this.message='';try{await api('/settings/panel-domain/check',{method:'POST',body:{domain:this.domain},timeout:45000});this.message=t('settings.panel_domain_verified');this.verified=true;}catch(e){this.message=e.message;this.verified=false;}finally{this.checking=false;}},
+  async apply(){if(!await confirmModal(t('settings.panel_certificate_confirm')))return;this.starting=true;this.message='';try{await api('/settings/panel-certificate',{method:'POST',body:{domain:this.domain}});await this.refresh();}catch(e){this.message=e.message;this.verified=false;}finally{this.starting=false;}}
+ };
+}
+
 </script>
 {{end}}

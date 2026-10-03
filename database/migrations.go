@@ -2,6 +2,19 @@ package database
 
 var migrations = append([]string{
 	wpAnomalySchema,
+	siteSSLRenewalSchema,
+	`CREATE TABLE IF NOT EXISTS firewall_port_rules (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		protocol    TEXT    NOT NULL,
+		port        INTEGER NOT NULL,
+		source      TEXT    NOT NULL DEFAULT '',
+		description TEXT    NOT NULL DEFAULT '',
+		expires_at  DATETIME,
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(protocol, port, source)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_firewall_port_rules_expires ON firewall_port_rules(expires_at)`,
+
 	// ============================================================
 	// admin_users
 	// ============================================================
