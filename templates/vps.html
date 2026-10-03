@@ -271,11 +271,11 @@
     <details class="card mb-5" x-show="tab==='maintenance'">
       <summary class="cursor-pointer text-gray-400">{{t .Lang "vps.advanced_lifecycle"}}</summary>
       <p class="text-sm text-gray-400 mt-4">{{t .Lang "vps.command_uninstall_help"}}</p>
-      <button class="btn-secondary mt-2" @click="copy('o uninstall')">{{t .Lang "vps.copy"}}: o uninstall</button>
+      <button class="btn-secondary mt-2" @click="copy('b uninstall')">{{t .Lang "vps.copy"}}: b uninstall</button>
       <p class="text-sm text-red-300 mt-5">{{t .Lang "vps.full_uninstall_help"}}</p>
       <pre class="vps-tool-output mt-3"># {{t .Lang "vps.full_uninstall_help"}}
-o uninstall --all</pre>
-      <button class="btn-secondary mt-2" @click="copy('o uninstall --all')">{{t .Lang "vps.copy"}}</button>
+b uninstall --all</pre>
+      <button class="btn-secondary mt-2" @click="copy('b uninstall --all')">{{t .Lang "vps.copy"}}</button>
     </details>
     <section class="card" x-show="tab==='maintenance'">
         <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "vps.safe_tools"}}</h3>
@@ -310,10 +310,10 @@ loading: false,
         serviceMessage: '',
         serviceMessageError: false,
         commands: [
-            { title: '{{t .Lang "vps.command_update"}}', help: '{{t .Lang "vps.command_update_help"}}', command: 'o update' },
-            { title: '{{t .Lang "vps.command_status"}}', help: '{{t .Lang "vps.command_status_help"}}', command: 'o status' },
-            { title: '{{t .Lang "vps.command_check_update"}}', help: '', command: 'o check-update' },
-{ title: '{{t .Lang "vps.command_menu"}}', help: '', command: 'o menu' }
+            { title: '{{t .Lang "vps.command_update"}}', help: '{{t .Lang "vps.command_update_help"}}', command: 'b update' },
+            { title: '{{t .Lang "vps.command_status"}}', help: '{{t .Lang "vps.command_status_help"}}', command: 'b status' },
+            { title: '{{t .Lang "vps.command_check_update"}}', help: '', command: 'b check-update' },
+{ title: '{{t .Lang "vps.command_menu"}}', help: '', command: 'b menu' }
         ],
         canApplyIPPriority() { return this.ipMode === 'default' ? !!this.overview.ip_priority?.can_restore : ['ipv4','ipv6'].includes(this.ipMode) && !!this.overview.ip_priority?.can_change; },
         ipPriorityLabel() {
