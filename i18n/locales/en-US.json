@@ -91,7 +91,9 @@
     "network_error": "Unable to connect to the panel service. Check whether the panel is running, the network is available, the HTTPS certificate is valid, and the access path is correct, then refresh and try again.",
     "operation_failed": "Operation failed",
     "operation_success": "Operation successful",
-    "help": "Help"
+    "help": "Help",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
   },
   "wp_core_update": {
     "invalid_request": "Invalid core update request",
@@ -2816,7 +2818,10 @@
     "panel_certificate_running": "Verifying domain and issuing certificate. Closing this page does not interrupt the operation.",
     "certificate_expiry": "Certificate expires:",
     "panel_domain_verified": "Domain reaches this server successfully",
-    "panel_certificate_confirm": "Issue and switch the panel domain certificate? Use the new hostname after success. Failure keeps the current certificate."
+    "panel_certificate_confirm": "Issue and switch the panel domain certificate? Use the new hostname after success. Failure keeps the current certificate.",
+    "tab_general": "General & account",
+    "tab_updates": "Panel & system updates",
+    "tab_operation_logs": "Operation logs"
   },
   "2006-01-02": "2006-01-02",
   "20060102": "20060102",
@@ -3227,7 +3232,8 @@
     "ip_state_external": "Current configuration: external",
     "ip_state_managed": "Current configuration: panel managed",
     "ip_state_unavailable": "Current configuration: unconfirmed",
-    "ip_custom": "Custom"
+    "ip_custom": "Custom",
+    "service_boot": "Start at boot"
   },
   "ssh_port": {
     "title": "Advanced: SSH port settings",

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Synchronize panel and VPS maintenance improvements while retaining Nginx/PHP-FPM, WordPress updates, migration, and image optimization.
+- Add Debian 13 / Ubuntu 24.04 LTS / Ubuntu 26.04 LTS installation validation on amd64 and arm64; use current official stable runtime packages for fresh installs and preserve existing PHP/database series.
+- Add recoverable firewall policy editing and SSH port migration, DNS and Swap controls, detached system updates with health checks, accurate service startup state, and per-site WP-Cron/certificate renewal controls.
+- Improve responsive navigation, settings tabs, optional-tool status, on-demand recommendations, and panel HTTPS login-link guidance.
+
 ## v2.2.2 — 2026-09-27
 
 - Promoted the one-line `curl` command as the primary README installation path and moved the prerequisite-heavy command into minimal-image troubleshooting.

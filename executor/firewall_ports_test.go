@@ -25,7 +25,7 @@ func TestNormalizeFirewallPortRule(t *testing.T) {
 		{name: "bad protocol", req: FirewallPortRuleRequest{Protocol: "sctp", Port: 80}, wantErr: "协议"},
 		{name: "bad port", req: FirewallPortRuleRequest{Protocol: "tcp", Port: 0}, wantErr: "端口"},
 		{name: "bad source", req: FirewallPortRuleRequest{Protocol: "tcp", Port: 80, Source: "not-an-ip"}, wantErr: "来源"},
-		{name: "public webadmin", req: FirewallPortRuleRequest{Protocol: "tcp", Port: 7080}, wantErr: "7080"},
+		{name: "public custom port unconfirmed", req: FirewallPortRuleRequest{Protocol: "tcp", Port: 7080}, wantErr: "确认"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

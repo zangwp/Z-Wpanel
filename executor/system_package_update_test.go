@@ -111,7 +111,7 @@ func TestRunSystemPackageUpdatePlanStopsBeforeUpgradeWhenPreflightFails(t *testi
 	if status.Status != "failed" || status.Stage != "preflight" || status.MessageKey != "settings.system_update_status_failed" {
 		t.Fatalf("unexpected status: %+v", status)
 	}
-	if len(calls) != 7 {
+	if len(calls) != 9 || strings.Contains(strings.Join(calls, "\n"), "--no-remove upgrade") {
 		t.Fatalf("upgrade should not run after failed preflight: %#v", calls)
 	}
 }

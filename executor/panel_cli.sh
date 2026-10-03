@@ -675,6 +675,7 @@ panel_help() {
     blue "YUB WPanel · 命令帮助"
     echo "用法: o <命令>（也可使用大写 O）"
     echo "  b / o menu       打开管理菜单"
+    echo "用法: b <命令>（也可使用大写 B）"
     echo "  b vps            查看 VPS 信息"
     echo "  b info           查看面板详情与安装路径"
     echo "  b status         诊断检查"

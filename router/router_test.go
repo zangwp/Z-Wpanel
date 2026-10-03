@@ -1641,9 +1641,9 @@ func TestCronPageExplainsManagedAndAutomaticTasks(t *testing.T) {
 	}
 	for _, required := range [][]byte{
 		[]byte(`cron.system_jobs_help`),
-		[]byte(`cron.ssl_renewal_help`),
+		[]byte(`cron.overview_help`),
 		[]byte(`cron.task_type_wp_cron`),
-		[]byte(`this.form.cron_expression = '*/5 * * * *'`),
+		[]byte(`job.task_type === 'wp_cron'`),
 	} {
 		if !bytes.Contains(source, required) {
 			t.Fatalf("cron guidance is missing %q", required)

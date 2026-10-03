@@ -24,6 +24,14 @@ import (
 var panelVersion string
 
 var i18nKeys = []string{
+	"common.disabled",
+	"common.enabled",
+	"ssh_port.apply",
+	"ssh_port.confirm",
+	"ssh_port.confirm_begin",
+	"ssh_port.deadline",
+	"ssh_port.saved",
+	"ssh_port.transition",
 	"common.close",
 	"common.help",
 	"common.loading",

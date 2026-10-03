@@ -91,7 +91,9 @@
     "network_error": "无法连接面板服务。请检查面板是否正在运行、网络连接、HTTPS 证书或访问入口是否正确，然后刷新重试。",
     "operation_failed": "操作失败",
     "operation_success": "操作成功",
-    "help": "说明"
+    "help": "说明",
+    "enabled": "已启用",
+    "disabled": "未启用"
   },
   "wp_core_update": {
     "invalid_request": "核心更新请求无效",
@@ -2816,7 +2818,10 @@
     "panel_certificate_running": "正在验证域名并申请证书，关闭页面不会中断。",
     "certificate_expiry": "证书有效期至：",
     "panel_domain_verified": "域名已正确指向并能访问本服务器",
-    "panel_certificate_confirm": "申请并切换面板域名证书？成功后使用新域名登录；申请失败保留当前证书。"
+    "panel_certificate_confirm": "申请并切换面板域名证书？成功后使用新域名登录；申请失败保留当前证书。",
+    "tab_general": "常规与账户",
+    "tab_updates": "面板与系统更新",
+    "tab_operation_logs": "操作日志"
   },
   "2006-01-02": "2006-01-02",
   "20060102": "20060102",
@@ -3227,7 +3232,8 @@
     "ip_state_external": "当前配置：外部配置",
     "ip_state_managed": "当前配置：面板管理",
     "ip_state_unavailable": "当前配置：未能确认",
-    "ip_custom": "自定义"
+    "ip_custom": "自定义",
+    "service_boot": "开机启动"
   },
   "ssh_port": {
     "title": "高级：SSH 端口设置",

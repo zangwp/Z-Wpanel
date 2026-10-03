@@ -219,7 +219,7 @@ func TestInstallerVerifiesReleaseBeforeExecutionAndDeployment(t *testing.T) {
 		requiredIndex(t, atomicHelper, required)
 	}
 
-	repair := script[requiredIndex(t, script, "if $REPAIR_MODE; then\n    prepare_panel_candidate"):]
+	repair := script[requiredIndex(t, script, "if $REPAIR_MODE; then\n preserve_existing_php_series\n    prepare_panel_candidate"):]
 	repairVerify := requiredIndex(t, repair, `verify_complete_release_bundle`)
 	repairExecute := requiredIndex(t, repair, `repair_check=$($PANEL_CANDIDATE --repair-config-check`)
 	if repairVerify >= repairExecute {
