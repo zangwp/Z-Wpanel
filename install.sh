@@ -1955,7 +1955,7 @@ remove_managed_panel_command() {
 }
 
 do_uninstall() {
- preserve_existing_php_series()
+ preserve_existing_php_series
     echo ""
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${YELLOW}  普通卸载将永久删除 /www/server/panel 全部内容，包括：${NC}"
@@ -2000,7 +2000,7 @@ do_uninstall() {
 }
 
 do_purge() {
- preserve_existing_php_series()
+ preserve_existing_php_series
     echo ""
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${RED}  高风险警告：彻底清空会删除下列数据和配置：${NC}"
@@ -2208,7 +2208,7 @@ fi
 assert_panel_command_paths_available
 
 if $REPAIR_MODE; then
- preserve_existing_php_series()
+ preserve_existing_php_series
     prepare_panel_candidate
     verify_complete_release_bundle || \
         log_error "repair执行前面板与许可发布包完整性复核失败"

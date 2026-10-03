@@ -23,6 +23,27 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
+  installer-packages:
+    name: Install runtime (${{ matrix.image }}, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['debian:13', 'ubuntu:24.04', 'ubuntu:26.04']
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install and validate official packages in a disposable container
+        run: docker run --rm -e CI=true -v "$PWD:/src:ro" '${{ matrix.image }}' bash /src/tests/apt_matrix.sh
+
   verify:
     name: Test, vet, and build (${{ matrix.arch }})
     strategy:
