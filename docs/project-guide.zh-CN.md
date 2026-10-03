@@ -19,7 +19,7 @@ The full English project guide is available here: [README.en.md](project-guide.e
 
 ## 🚀 快速安装
 
-> **支持范围：Debian 13 (Trixie) / Ubuntu 24.04 LTS (Noble)，amd64 / arm64。** 使用 `root` 用户执行：
+> **支持范围：Debian 13 (Trixie) / Ubuntu 24.04 LTS (Noble) / Ubuntu 26.04 LTS (Resolute)，amd64 / arm64。** 使用 `root` 用户执行：
 
 ```bash
 curl -fsSL https://wpanel.zangyubin.top/install | bash
@@ -163,7 +163,7 @@ YUB WPanel 支持在两台相同版本的面板之间搬迁 WordPress 或通用 
 
 | 项目 | 要求 |
 |------|------|
-| 操作系统 | Debian 13 (Trixie) 或 Ubuntu 24.04 LTS (Noble)；暂不自动延伸到其他大版本 |
+| 操作系统 | Debian 13 (Trixie)、Ubuntu 24.04 LTS (Noble) 或 Ubuntu 26.04 LTS (Resolute)；暂不自动延伸到其他大版本 |
 | CPU | 1 核及以上 |
 | 内存 | 1 GB 及以上（物理内存不超过 8 GB、未启用 Swap 且磁盘条件满足时，安装器可能创建 2 GB Swap） |
 | 架构 | amd64/x86_64 或 arm64/aarch64（内核与 dpkg 用户空间架构必须一致） |
@@ -174,15 +174,7 @@ YUB WPanel 支持在两台相同版本的面板之间搬迁 WordPress 或通用 
 
 **为什么锁定 Debian 13、Ubuntu 24.04 LTS 与 Ubuntu 26.04 LTS？**
 
-安装器会修改软件源、安装并配置 PHP、Nginx、MariaDB、Redis、Fail2ban 与 systemd 服务，因此兼容性必须按发行版版本验证。当前只接受 Debian 13/Trixie 和 Ubuntu 24.04/Noble，不会因为同属 Debian/Ubuntu 家族就放宽到未经测试的旧版或新版。Ubuntu 使用 Noble 自带的 PHP 8.3；Debian 使用经过固定 keyring 校验的 PHP 源。
-
-**为什么锁定 PHP 8.3？**
-
-WordPress 官方推荐 PHP 8.3 或更高版本。8.3 在 WordPress 生态中经过了最广泛的生产环境验证，拥有活跃支持周期，性能与安全性持续改进。固定版本意味着所有用户运行相同的 PHP 环境，问题可复现、可排查，避免因 PHP 版本差异导致的兼容性怪病。
-
-**为什么是 MariaDB 而非 MySQL？**
-
-WordPress 官方推荐 MariaDB 10.6 或更高版本。当前支持的 Debian 与 Ubuntu 系统源提供兼容版本。MariaDB 是由社区驱动的 GPL 分支，兼容 MySQL，并可直接获得发行版软件源提供的安全更新，无需添加第三方数据库仓库。
+安装器会配置软件源和系统服务，兼容性按发行版验证，当前仅支持上述三种系统及两种架构。新安装使用 PHP 8.5 与官方稳定版 Nginx、MariaDB、Redis；已有服务器保留 PHP 和数据库系列，避免自动跨大版本升级。版本与软件源差异见 [软件与平台策略](software-platforms.md)。
 
 **为什么是自己编的 Go 二进制，不用 Docker/PM2？**
 
@@ -194,10 +186,8 @@ WordPress 官方推荐 MariaDB 10.6 或更高版本。当前支持的 Debian 与
 
 | 组件 | 说明 |
 |------|------|
-| PHP 8.3 | Debian 使用经校验的 Ondřej Surý 源；Ubuntu 使用 Noble 原生包；独立 FPM Pool 隔离 |
-| MariaDB | 当前发行版系统源 |
-| Nginx | 当前发行版系统源 |
-| Redis | 当前发行版系统源 |
+| PHP 8.5 | Debian 使用 Sury；Ubuntu 24.04 使用 Ondřej PPA；Ubuntu 26.04 使用原生安全更新包；独立 FPM Pool |
+| MariaDB / Nginx / Redis | 已校验的官方 APT 源；现有数据库系列保留 |
 | Fail2ban + nftables | 当前发行版系统源 |
 
 ## 技术架构

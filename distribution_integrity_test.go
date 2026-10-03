@@ -133,12 +133,12 @@ func TestLegacyDistributionNamesDoNotReturn(t *testing.T) {
 
 func TestFixedVersionRepairUpgradeBridgesRemainExplicit(t *testing.T) {
 	checks := map[string][]string{
-		"README.md": {
+		"docs/project-guide.zh-CN.md": {
 			"v2.0.0 到 v2.0.1",
 			"v2.0.1 到 v2.0.2",
 			"不要使用只替换二进制的面板在线更新器",
 		},
-		"README.en.md": {
+		"docs/project-guide.en.md": {
 			"v2.0.0 to v2.0.1",
 			"v2.0.1 to v2.0.2",
 			"do not use the panel's binary-only online updater",

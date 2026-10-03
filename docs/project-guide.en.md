@@ -15,7 +15,7 @@ If you want the Chinese project README, see [README.md](project-guide.zh-CN.md).
 
 ## 🚀 Quick Installation
 
-> **Supported targets: Debian 13 (Trixie) and Ubuntu 24.04 LTS (Noble), on amd64 or arm64.** Run as `root`:
+> **Supported targets: Debian 13 (Trixie), Ubuntu 24.04 LTS (Noble), and Ubuntu 26.04 LTS (Resolute), on amd64 or arm64.** Run as `root`:
 
 ```bash
 curl -fsSL https://wpanel.zangyubin.top/install | bash
@@ -177,7 +177,7 @@ White-hat researchers are welcome to test this project. If you find a security i
 
 | Item | Requirement |
 |------|------|
-| Operating system | Debian 13 (Trixie) or Ubuntu 24.04 LTS (Noble); other major releases are not accepted automatically |
+| Operating system | Debian 13 (Trixie), Ubuntu 24.04 LTS (Noble), or Ubuntu 26.04 LTS (Resolute); other major releases are not accepted automatically |
 | CPU | 1 core or more |
 | Memory | 1 GB or more (the installer may create a 2 GB swap file when RAM is at most 8 GB, no swap is active, and disk checks pass) |
 | Architecture | amd64/x86_64 or arm64/aarch64; kernel and dpkg user-space architectures must match |
@@ -188,15 +188,7 @@ White-hat researchers are welcome to test this project. If you find a security i
 
 **Why exactly Debian 13, Ubuntu 24.04 LTS, and Ubuntu 26.04 LTS?**
 
-The installer changes package sources and configures PHP, Nginx, MariaDB, Redis, Fail2ban, and systemd. Compatibility therefore has to be validated per distribution release. The current allowlist is Debian 13/Trixie and Ubuntu 24.04/Noble; belonging to the Debian or Ubuntu family does not make an untested older or newer release supported. Ubuntu uses Noble's native PHP 8.3 packages, while Debian uses a PHP repository whose keyring is pinned and verified.
-
-**Why lock to PHP 8.3?**
-
-The WordPress project recommends PHP 8.3 or newer. PHP 8.3 is already widely tested in real production environments across the WordPress ecosystem, and it still has an active support window. Keeping the version fixed makes the runtime consistent, which helps reproduce and debug issues without fighting PHP version drift.
-
-**Why MariaDB instead of MySQL?**
-
-WordPress recommends MariaDB 10.6 or newer, and the supported Debian and Ubuntu repositories provide compatible releases. MariaDB is a community-driven GPL fork compatible with MySQL, and distribution packages provide security updates without adding a third-party database repository.
+Compatibility is validated for the three listed releases and both architectures. Fresh installations use PHP 8.5 and official stable Nginx, MariaDB, and Redis packages. Existing PHP and database series are retained to avoid unattended major upgrades. See the [software and platform policy](software-platforms.md) for repository differences.
 
 **Why build a Go binary instead of using Docker or PM2?**
 
@@ -208,10 +200,8 @@ The server-stack components below are installed through APT. The panel binary co
 
 | Component | Notes |
 |------|------|
-| PHP 8.3 | Verified Ondřej Surý repository on Debian; native Noble packages on Ubuntu; isolated FPM pools |
-| MariaDB | Current distribution repository |
-| Nginx | Current distribution repository |
-| Redis | Current distribution repository |
+| PHP 8.5 | Sury on Debian; Ondřej PPA on Ubuntu 24.04; native security packages on Ubuntu 26.04; isolated FPM pools |
+| MariaDB / Nginx / Redis | Verified official APT repositories; existing database series retained |
 | Fail2ban + nftables | Current distribution repository |
 
 ## Technical Architecture

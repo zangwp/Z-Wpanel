@@ -301,7 +301,8 @@ html[data-theme="light"] textarea {
 .workspace-tabs a.selected { color:#fff; background:#2563eb; }
 .software-field-heading { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:8px; }
 .software-field-heading > span { flex-shrink:0; }
-.software-config-grid { gap:24px; }
+.software-config-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+@media(min-width:1280px) { .software-config-grid-wide { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .port-access-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:16px; align-items:start; }
 @media(max-width:767px) { .port-access-grid { grid-template-columns:1fr; } .port-access-grid > div { grid-column:auto; } }
 
@@ -341,3 +342,10 @@ html[data-theme="light"] textarea {
     background: linear-gradient(135deg, #2563eb, #3b82f6);
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
 }
+
+/* New maintenance surfaces share the existing light and dark palette. */
+.vps-tabs,.vps-tool-tile,.vps-tool-output,.access-code { background:var(--panel-surface-strong); border-color:var(--panel-border); }
+.vps-tool-output,.access-code { color:var(--panel-text); }
+.access-rule,.workspace-tabs { border-color:var(--panel-border); }
+.vps-tabs button,.workspace-tabs a { color:var(--panel-muted); }
+.vps-tabs button.active,.workspace-tabs a.selected { color:#fff; }
