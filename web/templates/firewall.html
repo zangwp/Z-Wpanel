@@ -279,11 +279,11 @@
                 </select>
                 <select x-model="banSourceFilter" @change="page=1;fetchBans()" class="input-field text-sm py-1.5 w-40">
                     <option value="">{{t .Lang "firewall.all_sources"}}</option>
-                    <option value="olswpanel">{{t .Lang "firewall.source_web_protect"}}</option>
-                    <option value="olswpanel-login">{{t .Lang "firewall.source_login"}}</option>
-                    <option value="olswpanel-404">{{t .Lang "firewall.source_404"}}</option>
-                    <option value="olswpanel-sqli">{{t .Lang "firewall.source_sqli"}}</option>
-                    <option value="olswpanel-sshd">{{t .Lang "firewall.source_ssh"}}</option>
+                    <option value="yubwpanel">{{t .Lang "firewall.source_web_protect"}}</option>
+                    <option value="yubwpanel-login">{{t .Lang "firewall.source_login"}}</option>
+                    <option value="yubwpanel-404">{{t .Lang "firewall.source_404"}}</option>
+                    <option value="yubwpanel-sqli">{{t .Lang "firewall.source_sqli"}}</option>
+                    <option value="yubwpanel-sshd">{{t .Lang "firewall.source_ssh"}}</option>
                     <option value="panel">{{t .Lang "firewall.source_panel"}}</option>
                     <option value="panel_scan">{{t .Lang "firewall.source_scan"}}</option>
                     <option value="manual">{{t .Lang "firewall.source_manual"}}</option>
@@ -325,7 +325,7 @@
                                 <button type="button" @click="openRules(sourceRuleID(ban))" :class="sourceClass(ban)" class="text-xs underline decoration-dotted underline-offset-4 hover:text-white" :title="t('firewall.view_source_rule')" x-text="sourceLabel(ban)"></button>
                             </td>
                             <td class="table-cell text-xs" x-text="formatTime(ban.banned_at)"></td>
-                            <td class="table-cell text-xs" :title="!ban.expires_at && ban.source_jail.startsWith('olswpanel') ? t('firewall.fail2ban_managed_help') : ''" x-text="ban.ban_level >= 5 ? t('firewall.permanent') : (ban.expires_at ? formatTime(ban.expires_at) : (ban.source_jail.startsWith('olswpanel') ? t('firewall.fail2ban_managed') : t('firewall.unknown')))"></td>
+                            <td class="table-cell text-xs" :title="!ban.expires_at && ban.source_jail.startsWith('yubwpanel') ? t('firewall.fail2ban_managed_help') : ''" x-text="ban.ban_level >= 5 ? t('firewall.permanent') : (ban.expires_at ? formatTime(ban.expires_at) : (ban.source_jail.startsWith('yubwpanel') ? t('firewall.fail2ban_managed') : t('firewall.unknown')))"></td>
                             <td class="table-cell" x-text="ban.ban_count ?? t('firewall.unknown')"></td>
                             <td class="table-cell">
                                 <button x-show="ban.id > 0" @click="unban(ban)" class="btn-success text-xs py-1 px-2">{{t .Lang "firewall.unban"}}</button>

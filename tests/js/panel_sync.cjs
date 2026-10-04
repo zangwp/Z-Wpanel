@@ -51,5 +51,7 @@ vm.runInContext(script('dashboard'), context);
     assert(source('website_navigation').includes('/wordpress-overview'));
     for (const feature of ['fetchNginxCustom()', 'fcacheEnabled', 'companion-plugin-controls']) assert(source('website_detail').includes(feature));
     assert(!source('website_detail').includes('/php-runtime'));
+    assert(!source('firewall').includes('olswpanel'));
+    assert(source('firewall').includes('value="yubwpanel-login"'));
     console.log('Shared tabs/deep links, cleanup, visible update failures, navigation and Nginx controls passed');
 })().catch(error => { console.error(error); process.exit(1); });
