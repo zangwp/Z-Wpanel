@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.3.0 — 2026-10-04
 
 - Synchronize panel and VPS maintenance improvements while retaining Nginx/PHP-FPM, WordPress updates, migration, and image optimization.
 - Add Debian 13 / Ubuntu 24.04 LTS / Ubuntu 26.04 LTS installation validation on amd64 and arm64; use current official stable runtime packages for fresh installs and preserve existing PHP/database series.

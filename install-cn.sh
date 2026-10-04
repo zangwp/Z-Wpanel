@@ -58,7 +58,7 @@ assert_bootstrap_platform() {
     dpkg_arch=$(dpkg --print-architecture 2>/dev/null || true)
     case "${os_id}:${version_id}:${codename}" in
         debian:13:trixie|ubuntu:24.04:noble|ubuntu:26.04:resolute) ;;
-        *) log_error "仅支持 Debian 13 (trixie) 或 Ubuntu 24.04 LTS / Ubuntu 26.04 LTS (noble)，当前系统: ${os_id:-unknown} ${version_id:-unknown} ${codename:-unknown}" ;;
+        *) log_error "仅支持 Debian 13 (trixie) 或 Ubuntu 24.04 LTS (noble) / Ubuntu 26.04 LTS (resolute)，当前系统: ${os_id:-unknown} ${version_id:-unknown} ${codename:-unknown}" ;;
     esac
     case "$machine" in
         x86_64|amd64) machine="amd64" ;;
