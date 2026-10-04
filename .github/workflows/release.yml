@@ -99,19 +99,19 @@ jobs:
 
           # These vendored browser assets are part of the reviewed Git commit.
           # Release builds must never replace them with live CDN downloads.
-          test -s static/css/main.css
-          test -s static/js/alpine.min.js
-          test -s static/js/chart.min.js
-          test -s static/js/app.js
+          test -s web/static/css/main.css
+          test -s web/static/js/alpine.min.js
+          test -s web/static/js/chart.min.js
+          test -s web/static/js/app.js
           test -s LICENSE
-          test -s NOTICE.md
-          test -s THIRD_PARTY_NOTICES.md
+          test -s third_party/NOTICE.md
+          test -s third_party/THIRD_PARTY_NOTICES.md
           test -s third_party/adminer-6.0.1/LICENSE-APACHE-2.0.txt
           test -s third_party/adminer-6.0.1/NOTICE.txt
-          grep -Fq '* @copyright 2007 Jakub Vrana' executor/assets/adminer-6.0.1-mysql.php
-          grep -Fq '* @version 6.0.1' executor/assets/adminer-6.0.1-mysql.php
-          git diff --exit-code -- static
-          grep -Fq "ReleasePublicKeyHex = \"$RELEASE_PUBLIC_KEY_HEX\"" config/distribution.go
+          grep -Fq '* @copyright 2007 Jakub Vrana' internal/executor/assets/adminer-6.0.1-mysql.php
+          grep -Fq '* @version 6.0.1' internal/executor/assets/adminer-6.0.1-mysql.php
+          git diff --exit-code -- web/static
+          grep -Fq "ReleasePublicKeyHex = \"$RELEASE_PUBLIC_KEY_HEX\"" internal/config/distribution.go
 
       - name: Download and verify Go modules
         shell: bash
@@ -162,7 +162,7 @@ jobs:
               -buildvcs=true \
               -ldflags="-s -w -buildid= -X main.Version=$version -X main.BuildTime=$build_time" \
               -o "dist/yub-wpanel-linux-$arch" \
-              .
+              ./cmd/yub-wpanel
             test -s "dist/yub-wpanel-linux-$arch"
             test "$(od -An -tx1 -N4 "dist/yub-wpanel-linux-$arch" | tr -d ' \n')" = '7f454c46'
           done
@@ -227,8 +227,8 @@ jobs:
           module_list="$RUNNER_TEMP/yub-wpanel-release-modules"
           install -d -m 0755 "$license_root"
           install -m 0644 LICENSE "$license_root/LICENSE"
-          install -m 0644 NOTICE.md "$license_root/NOTICE.md"
-          install -m 0644 THIRD_PARTY_NOTICES.md "$license_root/THIRD_PARTY_NOTICES.md"
+          install -m 0644 third_party/NOTICE.md "$license_root/NOTICE.md"
+          install -m 0644 third_party/THIRD_PARTY_NOTICES.md "$license_root/THIRD_PARTY_NOTICES.md"
           printf '%s\n' "$version" > "$license_root/RELEASE_VERSION"
 
           # The released binary is statically linked with this exact Go toolchain.
@@ -259,7 +259,7 @@ jobs:
           install -m 0644 third_party/adminer-6.0.1/NOTICE.txt \
             "$license_root/adminer-6.0.1/NOTICE.txt"
 
-          CGO_ENABLED=0 go list -deps -f '{{with .Module}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}' . \
+          CGO_ENABLED=0 go list -deps -f '{{with .Module}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}' ./cmd/yub-wpanel \
             | LC_ALL=C sort -u > "$module_list"
           main_module="$(go list -m -f '{{.Path}}')"
           gomodcache_real="$(realpath -e -- "$(go env GOMODCACHE)")"
@@ -396,7 +396,7 @@ jobs:
           mapfile -t packages < "$packages_file"
           test "${#packages[@]}" -gt 0
           go test -trimpath "${packages[@]}"
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=true -o "$RUNNER_TEMP/yub-wpanel-arm64" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=true -o "$RUNNER_TEMP/yub-wpanel-arm64" ./cmd/yub-wpanel
           test -x "$RUNNER_TEMP/yub-wpanel-arm64"
           preflight_dir="$RUNNER_TEMP/yub-wpanel-arm64-preflight"
           install -d -m 0700 "$preflight_dir"
@@ -689,6 +689,9 @@ jobs:
           fi
           if [[ "$RELEASE_TAG" == 'v2.3.0' ]]; then
             release_notes="Nginx/PHP-FPM panel and VPS maintenance update. Fresh installs support Debian 13, Ubuntu 24.04 LTS, and Ubuntu 26.04 LTS on amd64/arm64, using PHP 8.5 and signed official stable Nginx/MariaDB/Redis packages. Existing PHP and database series are retained. Includes recoverable firewall policies, SSH port migration, DNS/Swap/IP-priority controls, background system updates, per-site WP-Cron/certificate renewal, and responsive layout improvements. All six platform installation combinations and both native test suites passed. $release_notes"
+          fi
+          if [[ "$RELEASE_TAG" == 'v2.3.1' ]]; then
+            release_notes="Repository layout maintenance: groups source into cmd/internal/web/deploy/docs/tests/third_party and reduces top-level directories from 21 to 8. Updates imports, embedded assets, build commands and documentation links while preserving Nginx/PHP-FPM, installed paths, plugin behavior, browser URLs and signed release asset names. $release_notes"
           fi
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             --verify-tag \

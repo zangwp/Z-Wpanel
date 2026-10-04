@@ -1,6 +1,6 @@
 # YUB WPanel
 
-<p><img src="../static/logo.png" alt="YUB WPanel" width="120"></p>
+<p><img src="../web/static/logo.png" alt="YUB WPanel" width="120"></p>
 
 WordPress 专用服务器管理面板。面向 Debian 13、Ubuntu 24.04 LTS 与 Ubuntu 26.04 LTS 的纯净服务器，支持 amd64 和 arm64。
 
@@ -10,7 +10,7 @@ WordPress server management panel for Debian 13, Ubuntu 24.04 LTS, and Ubuntu 26
 
 ## English Documentation
 
-The full English project guide is available here: [README.en.md](project-guide.en.md).
+The full English project guide is available here: [English guide](project-guide.en.md).
 
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](../LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8.svg)](https://go.dev/)
@@ -283,7 +283,7 @@ systemctl start yub-wpanel
 ├── collector/            # 系统指标采集
 ├── templates/            # HTML 模板
 ├── static/               # 已生成并嵌入的 CSS / JS / Logo
-├── assets/               # 品牌、社区图片与前端源文件
+├── web/source/               # 品牌、社区图片与前端源文件
 ├── deploy/cloudflare/    # 短安装域名的可审计 Worker 配置
 ├── install.sh            # 一键安装脚本
 ├── install-cn.sh         # 国内入口及 bootstrap.sh 的共享验签源
@@ -299,5 +299,5 @@ systemctl start yub-wpanel
 GNU GPL v3.0 only（SPDX：`GPL-3.0-only`）
 
 YUB WPanel 依据 GNU GPL v3.0 only 发布，由 zangwp 维护。完整许可条款见
-[`LICENSE`](../LICENSE)，项目声明见 [`NOTICE.md`](NOTICE.md)，第三方组件许可见
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 及每个 Release 附带的签名许可归档。
+[`LICENSE`](../LICENSE)，项目声明见 [`third_party/NOTICE.md`](../third_party/NOTICE.md)，第三方组件许可见
+[`third_party/THIRD_PARTY_NOTICES.md`](../third_party/THIRD_PARTY_NOTICES.md) 及每个 Release 附带的签名许可归档。

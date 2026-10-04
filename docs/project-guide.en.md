@@ -1,6 +1,6 @@
 # YUB WPanel
 
-<p><img src="../static/logo.png" alt="YUB WPanel" width="120"></p>
+<p><img src="../web/static/logo.png" alt="YUB WPanel" width="120"></p>
 
 YUB WPanel is a WordPress-focused server management panel for clean Debian 13, Ubuntu 24.04 LTS, and Ubuntu 26.04 LTS servers on amd64 or arm64. It helps you provision and operate WordPress sites with a single Go binary, embedded templates, and a workflow centered on security, isolation, backups, SSL, PHP-FPM, Nginx, MariaDB, and daily site operations.
 
@@ -324,7 +324,7 @@ Verify the China-friendly `install-cn.sh` release asset and configure an HTTPS G
 ├── collector/            # system metrics collector
 ├── templates/            # HTML templates
 ├── static/               # generated and embedded CSS / JS / logo
-├── assets/               # branding, community artwork, and frontend source
+├── web/source/               # branding, community artwork, and frontend source
 ├── deploy/cloudflare/    # auditable Worker for the short install domain
 ├── install.sh            # one-click installer
 ├── install-cn.sh         # shared signed-bootstrap source and China entry
@@ -340,7 +340,7 @@ See the [repository layout note](repository-layout.md) for the root-file policy 
 GNU GPL v3.0 only (SPDX: `GPL-3.0-only`)
 
 YUB WPanel is distributed under GNU GPL v3.0 only and maintained by zangwp. See
-[`LICENSE`](../LICENSE) for the complete terms, [`NOTICE.md`](NOTICE.md) for the
+[`LICENSE`](../LICENSE) for the complete terms, [`third_party/NOTICE.md`](../third_party/NOTICE.md) for the
 project notice, and
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) plus the signed license
+[`third_party/THIRD_PARTY_NOTICES.md`](../third_party/THIRD_PARTY_NOTICES.md) plus the signed license
 archive attached to each Release for third-party terms.

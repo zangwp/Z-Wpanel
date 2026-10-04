@@ -134,4 +134,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CGO_ENABLED=0 go build -trimpath -buildvcs=true -o "$RUNNER_TEMP/yub-wpanel-${{ matrix.arch }}" ./
+          CGO_ENABLED=0 go build -trimpath -buildvcs=true -o "$RUNNER_TEMP/yub-wpanel-${{ matrix.arch }}" ./cmd/yub-wpanel

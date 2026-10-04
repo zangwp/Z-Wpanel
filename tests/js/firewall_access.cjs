@@ -1,5 +1,5 @@
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
-const source = fs.readFileSync('templates/firewall_controller.html', 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+const source = fs.readFileSync('web/templates/firewall_controller.html', 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
 const calls = [];
 const ctx = {t:x=>x, showToast:()=>{}, confirmModal:async()=>true, setTimeout:()=>1, clearTimeout:()=>{}, api:async(path,opts)=>{calls.push(path);return {success:true,data:{confirmation_token:'test',deadline:'2030-01-01'}}}};
 vm.createContext(ctx);vm.runInContext(source,ctx);

@@ -1,5 +1,5 @@
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
-const source = fs.readFileSync('templates/settings.html', 'utf8');
+const source = fs.readFileSync('web/templates/settings.html', 'utf8');
 const script = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m => m[1].includes('function systemUpdate()'))[1];
 let timers = new Map(), next = 0;
 const ctx = { console, setTimeout(fn) { timers.set(++next, fn); return next; }, clearTimeout(id) { timers.delete(id); } };

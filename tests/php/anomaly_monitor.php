@@ -3,7 +3,7 @@ define('ABSPATH', '/fixture/');
 define('DAY_IN_SECONDS', 86400);
 define('ARRAY_A', 'ARRAY_A');
 define('DB_NAME', 'fixture_db');
-require __DIR__.'/../../yub-wpanel-optimizer/includes/trait-anomaly-monitor.php';
+require __DIR__.'/../../web/plugins/yub-wpanel-optimizer/includes/trait-anomaly-monitor.php';
 class MonitorFixture { use YUBW_Optimizer_Anomaly_Monitor_Trait; }
 function verify($ok, $message) { if (!$ok) throw new Exception($message); }
 try { MonitorFixture::collect_anomaly_sample(0, 100, []); throw new Exception('missing CLI runner gate'); }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestWPUpdateRestorePollingStopsWhenTaskIsGone(t *testing.T) {
-	content, err := os.ReadFile("../templates/wp_inventory_panel.html")
+	content, err := os.ReadFile("../web/templates/wp_inventory_panel.html")
 	if err != nil {
 		t.Fatal(err)
 	}
