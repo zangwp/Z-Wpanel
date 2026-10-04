@@ -1,10 +1,10 @@
 # YUB WPanel
 
-<p><img src="static/logo.png" alt="YUB WPanel" width="100"></p>
+<p><img src="web/static/logo.png" alt="YUB WPanel" width="100"></p>
 
 轻量的 VPS 与 WordPress 管理面板，使用 **Nginx、PHP-FPM、MariaDB 和 Redis**。集中管理网站、数据库、SSL、缓存、备份和服务器维护。
 
-[English](README.en.md) · [使用文档](docs/project-guide.zh-CN.md) · [版本发布](https://github.com/zangwp/Z-Wpanel/releases) · [问题反馈](https://github.com/zangwp/Z-Wpanel/issues)
+[English](docs/README.en.md) · [使用文档](docs/project-guide.zh-CN.md) · [版本发布](https://github.com/zangwp/Z-Wpanel/releases) · [问题反馈](https://github.com/zangwp/Z-Wpanel/issues)
 
 ## 安装
 
@@ -52,4 +52,4 @@ b update    通过签名入口更新或修复面板
 
 ---
 
-[GPL-3.0-only](LICENSE) · [项目声明](NOTICE.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [zangwp](https://github.com/zangwp)
+[GPL-3.0-only](LICENSE) · [项目声明](third_party/NOTICE.md) · [第三方许可](third_party/THIRD_PARTY_NOTICES.md) · [zangwp](https://github.com/zangwp)

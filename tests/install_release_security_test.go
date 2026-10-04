@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zangwp/Z-Wpanel/config"
+	"github.com/zangwp/Z-Wpanel/internal/config"
 )
 
 func TestInstallerReleasePublicKeyMatchesApplication(t *testing.T) {

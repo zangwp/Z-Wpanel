@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-function script(file){return [...fs.readFileSync('templates/'+file,'utf8').matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1].replace(/{{[\s\S]*?}}/g,'translated')).join('\n');}
+function script(file){return [...fs.readFileSync('web/templates/'+file,'utf8').matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1].replace(/{{[\s\S]*?}}/g,'translated')).join('\n');}
 let calls=[];const ctx={t:x=>x,showToast:()=>{},confirmModal:async()=>true,api:async p=>{calls.push(p);return {success:true,data:p==='/software'?[{name:'MariaDB',configs:[{key:'innodb_buffer_pool_size',value:'742M'}]}]:[]};}};
 vm.createContext(ctx);vm.runInContext(script('software.html'),ctx);
 (async()=>{

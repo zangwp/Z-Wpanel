@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.3.1 — 2026-10-04
+
+- Group application code under `cmd/` and `internal/`, web resources under `web/`, and auxiliary scripts/Workers under `deploy/`; reduce the root from 21 directories to 8 without removing required code or assets.
+- Retain Nginx/PHP-FPM, existing server and plugin paths, browser URLs, signed installer entry points, release asset names and license archive contents.
+- Update imports, embedded resource boundaries, development commands, CI, release builds and documentation links; keep generated `dist/` files out of source-state metadata.
+
 ## v2.3.0 — 2026-10-04
 
 - Synchronize panel and VPS maintenance improvements while retaining Nginx/PHP-FPM, WordPress updates, migration, and image optimization.
