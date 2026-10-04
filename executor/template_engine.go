@@ -640,7 +640,7 @@ var (
 	writePHPFPMPoolFile    = os.WriteFile
 	removePHPFPMPoolFile   = os.Remove
 	runPHPFPMServiceAction = func(action string) error {
-		out, err := exec.Command("systemctl", action, "php8.3-fpm").CombinedOutput()
+		out, err := exec.Command("systemctl", action, PHPFPMService()).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("systemctl %s php8.3-fpm: %s", action, strings.TrimSpace(string(out)))
 		}
@@ -658,7 +658,7 @@ func (e *TemplateEngine) ApplyPHPFPMPool(configContent string, targetPath string
 		return fmt.Errorf("写入PHP-FPM配置失败: %w", err)
 	}
 
-	testCmd := exec.Command("php-fpm8.3", "-t")
+	testCmd := exec.Command(PHPFPMBinary(), "-t")
 	testOut, err := testCmd.CombinedOutput()
 	if err != nil {
 		applyErr := fmt.Errorf("PHP-FPM 配置检查失败: %s", strings.TrimSpace(string(testOut)))

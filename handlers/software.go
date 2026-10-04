@@ -32,6 +32,7 @@ type guardResponse struct {
 	Service      string `json:"service"`
 	Version      string `json:"version"`
 	Running      bool   `json:"running"`
+	Enabled      string `json:"enabled"`
 	Paused       bool   `json:"paused"`
 	Restarts     int    `json:"restarts"`
 	LastIncident string `json:"last_incident"`
@@ -174,6 +175,9 @@ func (h *SoftwareHandler) ViewLog(c *gin.Context) {
 	lang := softwareLang(c)
 	name := c.Query("name")
 	path, ok := softwareLogPaths[name]
+	if name == "PHP" {
+		path = "/var/log/" + executor.PHPFPMService() + ".log"
+	}
 	if !ok {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(i18n.T(lang, "software.unknown_software")))
 		return
@@ -194,6 +198,9 @@ func (h *SoftwareHandler) ClearLog(c *gin.Context) {
 	lang := softwareLang(c)
 	name := c.Query("name")
 	path, ok := softwareLogPaths[name]
+	if name == "PHP" {
+		path = "/var/log/" + executor.PHPFPMService() + ".log"
+	}
 	if !ok {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(i18n.T(lang, "software.unknown_software")))
 		return
@@ -213,7 +220,8 @@ func (h *SoftwareHandler) GetGuardStatus(c *gin.Context) {
 		result[i] = guardResponse{
 			Name:         s.Name,
 			Service:      s.ServiceName,
-			Version:      strings.TrimSpace(runCmd(versionCmds[s.ServiceName])),
+			Version:      softwareServiceVersion(s.ServiceName),
+			Enabled:      strings.TrimSpace(runCmd("systemctl is-enabled " + s.ServiceName)),
 			Running:      s.Running,
 			Paused:       s.Paused,
 			Restarts:     s.Restarts,
@@ -298,6 +306,8 @@ func phpConfigRequiresPoolRebuild(key string) bool {
 }
 
 func (h *SoftwareHandler) SaveConfig(c *gin.Context) {
+	softwareConfigMu.Lock()
+	defer softwareConfigMu.Unlock()
 	lang := softwareLang(c)
 	var req struct {
 		Name  string `json:"name"`
@@ -314,9 +324,9 @@ func (h *SoftwareHandler) SaveConfig(c *gin.Context) {
 	switch req.Name {
 	case "PHP":
 		configPath = softwarePHPRuntimeConfigPath()
-		serviceName = "php8.3-fpm"
-		checkCmd = "php-fpm8.3 -t"
-		reloadCmd = "systemctl reload php8.3-fpm"
+		serviceName = executor.PHPFPMService()
+		checkCmd = executor.PHPFPMBinary() + " -t"
+		reloadCmd = "systemctl reload " + executor.PHPFPMService()
 	case "Nginx":
 		configPath = softwareNginxConfigPath
 		serviceName = "nginx"
@@ -585,8 +595,8 @@ func (h *SoftwareHandler) ClearOpcache(c *gin.Context) {
 }
 
 func getPHPInfo(lang string) softwareItem {
-	ver := runCmd("php -v 2>/dev/null | head -1 | awk '{print $2}'")
-	extCount := runCmd("php -m 2>/dev/null | wc -l")
+	ver := runCmd(executor.PHPCLIBinary() + " -v 2>/dev/null | head -1 | awk '{print $2}'")
+	extCount := runCmd(executor.PHPCLIBinary() + " -m 2>/dev/null | wc -l")
 	return softwareItem{
 		Name:       "PHP",
 		Version:    strings.TrimSpace(ver),
@@ -726,4 +736,11 @@ func findNginxValue(content, key string) string {
 		}
 	}
 	return ""
+}
+
+func softwareServiceVersion(service string) string {
+	if service == executor.PHPFPMService() {
+		return strings.TrimSpace(runCmd(executor.PHPCLIBinary() + " -v 2>/dev/null | head -1 | awk '{print $2}'"))
+	}
+	return strings.TrimSpace(runCmd(versionCmds[service]))
 }

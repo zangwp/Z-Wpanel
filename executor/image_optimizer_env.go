@@ -7,25 +7,29 @@ import (
 	"time"
 )
 
-const phpExifPackage = "php8.3-exif"
-
 // jpegoptimPackage/optipngPackage 是历史图库批量优化依赖的无损压缩二进制，
-// 只影响那一个功能，跟 php8.3-exif（影响新上传处理）互不混淆。
+// 只影响那一个功能，跟 对应 PHP EXIF 扩展（影响新上传处理）互不混淆。
 const jpegoptimPackage = "jpegoptim"
 const optipngPackage = "optipng"
 
-// EnsurePHPExifExtension 保证 php8.3-exif 扩展已安装，供配套插件的新上传图片处理
+// EnsurePHPExifExtension 保证 对应 PHP EXIF 扩展 扩展已安装，供配套插件的新上传图片处理
 // （EXIF 方向修正）使用。新装机通过 install.sh 已经装了这个包；这个函数是给已经
-// 装机的老服务器做补装，异步执行、不阻塞面板启动，装完自动重载 php8.3-fpm 让扩展
+// 装机的老服务器做补装，异步执行、不阻塞面板启动，装完自动重载 PHP-FPM 让扩展
 // 生效。插件侧不查询这个函数的状态——它直接在 PHP 运行时用
 // is_callable('exif_read_data') 判断，装好之后下次页面加载自然可用。
 func EnsurePHPExifExtension() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if exec.CommandContext(ctx, PHPCLIBinary(), "-r", "exit(extension_loaded('exif') ? 0 : 1);").Run() == nil {
+		return
+	}
+	phpExifPackage := "php" + PHPVersion() + "-exif"
 	ensureAptPackage(phpExifPackage, func() {
-		if err := exec.Command("systemctl", "reload", "php8.3-fpm").Run(); err != nil {
-			log.Printf("[图片优化] %s 补装成功，但重载 php8.3-fpm 失败，需要人工重启使扩展生效: %v", phpExifPackage, err)
+		if err := exec.Command("systemctl", "reload", PHPFPMService()).Run(); err != nil {
+			log.Printf("[图片优化] %s 补装成功，但重载 PHP-FPM 失败，需要人工重启使扩展生效: %v", phpExifPackage, err)
 			return
 		}
-		log.Printf("[图片优化] 已补装 %s 并重载 php8.3-fpm", phpExifPackage)
+		log.Printf("[图片优化] 已补装 %s 并重载 PHP-FPM", phpExifPackage)
 	})
 }
 

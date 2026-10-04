@@ -179,7 +179,7 @@ func TestReleaseWorkflowSupplyChainBoundaries(t *testing.T) {
 		`BOOTSTRAP_RELEASE_VERSION=\"$version\"`,
 		`BOOTSTRAP_DEFAULT_PREFER_CN=0`,
 		`sudo bash dist/bootstrap.sh --check-platform`,
-		`docker run --rm -i debian:13 bash -s -- --check-platform < dist/bootstrap.sh`,
+		`docker run --rm -i "$image" bash -s -- --check-platform < dist/bootstrap.sh`,
 		`printf '%s\n' "$version" > "$license_root/RELEASE_VERSION"`,
 		`install -m 0644 "$go_root/LICENSE" "$license_root/go-toolchain/LICENSE"`,
 		"third_party/adminer-6.0.1/LICENSE-APACHE-2.0.txt",
@@ -243,8 +243,9 @@ func TestCIWorkflowUsesExactPinnedGoToolchain(t *testing.T) {
 		"runner: ubuntu-24.04",
 		"runner: ubuntu-24.04-arm",
 		"sudo bash install.sh --check-platform",
-		`docker run --rm -v "$PWD:/src:ro" debian:13 bash /src/install.sh --check-platform`,
-		`docker run --rm -i debian:13 bash -s -- --check-platform < "$RUNNER_TEMP/bootstrap.sh"`,
+		"for image in debian:13 ubuntu:24.04 ubuntu:26.04; do",
+		`docker run --rm -v "$PWD:/src:ro" "$image" bash /src/install.sh --check-platform`,
+		`docker run --rm -i "$image" bash -s -- --check-platform < "$RUNNER_TEMP/bootstrap.sh"`,
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("CI workflow is missing platform verification %q", required)

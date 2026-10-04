@@ -65,16 +65,7 @@ var (
 	setSystemHostname = func(hostname string) error {
 		return exec.Command("hostnamectl", "set-hostname", hostname).Run()
 	}
-	enableSystemNTP = func() error {
-		if err := exec.Command("timedatectl", "set-ntp", "true").Run(); err != nil {
-			return err
-		}
-		unit := ntpTimeSyncUnit()
-		if unit == "" {
-			return nil
-		}
-		return exec.Command("systemctl", "restart", unit).Run()
-	}
+	enableSystemNTP    = StartSystemTimeSync
 	ntpTimeSyncUnit    = detectNTPTimeSyncUnit
 	readSystemTimezone = getTimezone
 	readSystemHostname = getHostname

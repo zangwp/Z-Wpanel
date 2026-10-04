@@ -45,7 +45,7 @@ type wpCorePHPRunnerOptions struct {
 type wpCorePHPRunner struct{ opts wpCorePHPRunnerOptions }
 
 func newDefaultWPCorePHPRunner(wwwRoot string) (*wpCorePHPRunner, error) {
-	return newWPCorePHPRunner(wpCorePHPRunnerOptions{wwwRoot: wwwRoot, runtimeRoot: wpCoreUpdateRuntimeRoot, phpPath: wpInventoryPHPPath, runuserPath: wpInventoryRunuserPath, phpDir: "/usr/bin", runuserDir: "/usr/sbin", requireRoot: true, ownerUID: 0, ownerGID: 0, lookupUser: user.Lookup, chown: os.Chown})
+	return newWPCorePHPRunner(wpCorePHPRunnerOptions{wwwRoot: wwwRoot, runtimeRoot: wpCoreUpdateRuntimeRoot, phpPath: wpInventoryPHPPath(), runuserPath: wpInventoryRunuserPath, phpDir: "/usr/bin", runuserDir: "/usr/sbin", requireRoot: true, ownerUID: 0, ownerGID: 0, lookupUser: user.Lookup, chown: os.Chown})
 }
 
 func newWPCorePHPRunner(opts wpCorePHPRunnerOptions) (*wpCorePHPRunner, error) {

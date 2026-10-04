@@ -54,7 +54,7 @@ func ensureManagedServiceDropInStartLimitSections() error {
 
 func repairManagedServiceDropIns(root string) (bool, error) {
 	changed := false
-	for _, svc := range []string{"nginx", "php8.3-fpm", "mariadb", "redis-server"} {
+	for _, svc := range []string{"nginx", PHPFPMService(), "mariadb", "redis-server"} {
 		path := filepath.Join(root, svc+".service.d", "yub-wpanel.conf")
 		data, err := os.ReadFile(path)
 		if os.IsNotExist(err) {

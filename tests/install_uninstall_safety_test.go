@@ -47,7 +47,7 @@ func TestOrdinaryUninstallDisclosesDeletedAndPreservedDataBeforeMutation(t *test
 		"/www/wwwlogs（网站日志）",
 		"/www/server/certificates（站点 SSL 证书，不包括已删除的面板 TLS 身份）",
 		"/etc/nginx/sites-available 与 sites-enabled（站点 Nginx 配置）",
-		"/etc/php/8.3/fpm/pool.d（站点 PHP-FPM pools）",
+		"/etc/php/${PHP_SERIES}/fpm/pool.d（站点 PHP-FPM pools）",
 	} {
 		if !strings.Contains(uninstall, required) {
 			t.Errorf("ordinary uninstall is missing scope disclosure %q", required)
@@ -70,7 +70,7 @@ func TestPurgeRequiresExactSecondConfirmationBeforeMutation(t *testing.T) {
 		"全部 PHP-FPM pools",
 		"/www/wwwroot、/www/wwwlogs、/www/server/certificates",
 		"面板状态、凭据、备份和共享安装包缓存",
-		"共享系统软件：Nginx、PHP 8.3、MariaDB、Redis、Fail2ban",
+		"共享系统软件：Nginx、PHP ${PHP_SERIES}、MariaDB、Redis、Fail2ban",
 		"可能同时被非 YUB 工作负载使用",
 		"选择“彻底清空”后的第二次确认",
 		"请输入精确的 ${BOLD}PURGE${NC}",
@@ -109,7 +109,7 @@ func TestUninstallCleanupUsesExactYUBOwnedResources(t *testing.T) {
 		"/etc/systemd/system/yubwpanel-whitelist.timer",
 		"/etc/systemd/system/yubwpanel-whitelist.service",
 		"/etc/systemd/system/nginx.service.d/yub-wpanel.conf",
-		"/etc/systemd/system/php8.3-fpm.service.d/yub-wpanel.conf",
+		"/etc/systemd/system/php${PHP_SERIES}-fpm.service.d/yub-wpanel.conf",
 		"/etc/systemd/system/mariadb.service.d/yub-wpanel.conf",
 		"/etc/systemd/system/redis-server.service.d/yub-wpanel.conf",
 		"/etc/fail2ban/jail.d/yubwpanel.conf",
@@ -249,6 +249,7 @@ func TestIntegrationCleanupToleratesMissingOrFailingServices(t *testing.T) {
 	script := readUninstallSafetyScript(t)
 	cleanup := extractUninstallSafetyFunction(t, script, "cleanup_yub_runtime_integrations", "do_uninstall() {")
 	fixture := `set -euo pipefail
+PHP_SERIES=8.3
 ` + cleanup + `
 cleanup_yub_runtime_integrations
 echo completed

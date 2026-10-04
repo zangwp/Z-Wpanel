@@ -16,7 +16,7 @@ func TestInstallRequiredWebServicesOrder(t *testing.T) {
 
 	guardConfigured := requiredIndex(t, script, `log_info "systemd 进程守护配置完成"`)
 	daemonReload := requiredLastIndexBefore(t, script, "systemctl daemon-reload", guardConfigured)
-	phpStart := requiredIndex(t, script, "systemctl_start_required php8.3-fpm")
+	phpStart := requiredIndex(t, script, "systemctl_start_required php${PHP_SERIES}-fpm")
 	nginxStart := requiredIndex(t, script, "systemctl_start_required nginx")
 	mariaDBStart := requiredIndex(t, script, "systemctl_start_required mariadb")
 	panelStart := requiredIndex(t, script, "systemctl_start_required yub-wpanel")
@@ -35,7 +35,7 @@ func TestInstallRequiredWebServicesUseSharedStartHelper(t *testing.T) {
 		t.Fatalf("systemctl_start_required helper definitions = %d, want 1", got)
 	}
 	for _, call := range []string{
-		"systemctl_start_required php8.3-fpm",
+		"systemctl_start_required php${PHP_SERIES}-fpm",
 		"systemctl_start_required nginx",
 	} {
 		if got := countExactLine(script, call); got != 1 {
@@ -47,7 +47,7 @@ func TestInstallRequiredWebServicesUseSharedStartHelper(t *testing.T) {
 	}
 
 	for _, forbidden := range []string{
-		"systemctl restart php8.3-fpm",
+		"systemctl restart php${PHP_SERIES}-fpm",
 		"systemctl restart nginx",
 	} {
 		if strings.Contains(script, forbidden) {

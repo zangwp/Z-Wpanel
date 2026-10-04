@@ -218,7 +218,7 @@ func runFilesizeRewrite(ctx context.Context, webRoot, systemUser string, manifes
 		return 0, 0, err
 	}
 
-	phpPath, err := validateInventoryBinary(wpInventoryPHPPath, "/usr/bin", 0, 0)
+	phpPath, err := validateInventoryBinary(wpInventoryPHPPath(), "/usr/bin", 0, 0)
 	if err != nil {
 		return 0, 0, err
 	}

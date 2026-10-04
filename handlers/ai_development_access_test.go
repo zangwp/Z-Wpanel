@@ -39,10 +39,10 @@ func TestAIDevelopmentCredentialPackageUsesConfiguredPortAndPrivateMode(t *testi
 		t.Fatalf("private key mode=%v", key)
 	}
 	for name, want := range map[string]os.FileMode{
-		"AGENTS.md":                  0644,
-		"CLAUDE.md":                  0644,
-		"README.md":                  0644,
-		".gitignore":                 0644,
+		"AGENTS.md":                    0644,
+		"CLAUDE.md":                    0644,
+		"README.md":                    0644,
+		".gitignore":                   0644,
 		".yub-wpanel-ai/id_ed25519":    0600,
 		".yub-wpanel-ai/known_hosts":   0600,
 		".yub-wpanel-ai/connect.sh":    0700,

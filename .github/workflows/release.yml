@@ -217,7 +217,9 @@ jobs:
           grep -Fxq 'BOOTSTRAP_DEFAULT_PREFER_CN=1' dist/install-cn.sh
           grep -Fxq 'BOOTSTRAP_DEFAULT_PREFER_CN=0' dist/bootstrap.sh
           sudo bash dist/bootstrap.sh --check-platform
-          docker run --rm -i debian:13 bash -s -- --check-platform < dist/bootstrap.sh
+          for image in debian:13 ubuntu:24.04 ubuntu:26.04; do
+            docker run --rm -i "$image" bash -s -- --check-platform < dist/bootstrap.sh
+          done
 
           # Collect the reviewed browser notices plus the exact license files
           # from every external Go module linked into the release binary.
@@ -684,6 +686,9 @@ jobs:
           fi
           if [[ "$RELEASE_TAG" == 'v2.2.2' ]]; then
             release_notes="Promotes the one-line short installer in the README, moves the prerequisite-heavy command to minimal-image troubleshooting, and makes the signed bootstrap explicitly install missing download, CA, and OpenSSL prerequisites before verification. $release_notes"
+          fi
+          if [[ "$RELEASE_TAG" == 'v2.3.0' ]]; then
+            release_notes="Nginx/PHP-FPM panel and VPS maintenance update. Fresh installs support Debian 13, Ubuntu 24.04 LTS, and Ubuntu 26.04 LTS on amd64/arm64, using PHP 8.5 and signed official stable Nginx/MariaDB/Redis packages. Existing PHP and database series are retained. Includes recoverable firewall policies, SSH port migration, DNS/Swap/IP-priority controls, background system updates, per-site WP-Cron/certificate renewal, and responsive layout improvements. All six platform installation combinations and both native test suites passed. $release_notes"
           fi
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             --verify-tag \

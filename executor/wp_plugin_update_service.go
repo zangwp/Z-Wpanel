@@ -18,14 +18,14 @@ import (
 )
 
 var (
-	ErrWPPluginUpdateInvalid         = errors.New("invalid plugin update request")
-	ErrWPPluginUpdateNotFound        = errors.New("plugin update resource not found")
-	ErrWPPluginUpdateConflict        = errors.New("plugin update request conflict")
-	ErrWPPluginUpdateBusy            = errors.New("plugin update service busy")
-	ErrWPPluginUpdateUnavailable     = errors.New("plugin update upstream unavailable")
-	ErrWPPluginUpdateSiteBusy        = errors.New("plugin update blocked by active site restore")
-	ErrWPPluginUpdateNotInRepository = errors.New("plugin not available in the official WordPress.org repository")
-	ErrWPPluginUpdateLicenseInvalid  = errors.New("plugin update license invalid or not activated")
+	ErrWPPluginUpdateInvalid                    = errors.New("invalid plugin update request")
+	ErrWPPluginUpdateNotFound                   = errors.New("plugin update resource not found")
+	ErrWPPluginUpdateConflict                   = errors.New("plugin update request conflict")
+	ErrWPPluginUpdateBusy                       = errors.New("plugin update service busy")
+	ErrWPPluginUpdateUnavailable                = errors.New("plugin update upstream unavailable")
+	ErrWPPluginUpdateSiteBusy                   = errors.New("plugin update blocked by active site restore")
+	ErrWPPluginUpdateNotInRepository            = errors.New("plugin not available in the official WordPress.org repository")
+	ErrWPPluginUpdateLicenseInvalid             = errors.New("plugin update license invalid or not activated")
 	ErrWPPluginUpdateLicenseProtocolUnsupported = errors.New("plugin update uses a commercial license download protocol not supported by the panel")
 )
 

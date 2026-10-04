@@ -1,4 +1,4 @@
-const RELEASE_VERSION = "v2.2.2";
+const RELEASE_VERSION = "v2.3.0";
 const RELEASE_BASE = `https://github.com/zangwp/Z-Wpanel/releases/download/${RELEASE_VERSION}`;
 const BOOTSTRAP_NAME = "bootstrap.sh";
 const PUBLIC_KEY_SPKI_B64 = "MCowBQYDK2VwAyEA0jnZ48kP288D+aZkeQnquJZADGErVCWn66TdL7IlmHc=";
