@@ -24,6 +24,9 @@ import (
 var panelVersion string
 
 var i18nKeys = []string{
+	"dashboard.data_stale", "alert.configured", "alert.not_configured",
+	"files.file_lock_active_title", "files.file_lock_inactive_help", "files.file_lock_inactive_title", "files.file_lock_notice",
+	"wp_fleet.site_refresh", "wp_fleet.site_refresh_failed", "wp_fleet.site_refresh_running", "wp_fleet.site_refresh_timeout",
 	"common.disabled",
 	"common.enabled",
 	"ssh_port.apply",

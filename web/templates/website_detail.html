@@ -1,9 +1,20 @@
 {{template "base" .}}
 {{define "websites_detail_content"}}
-<div x-data="websiteDetail()" x-init="init()">
+<div x-data="websiteDetail()">
 
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold text-white">{{t .Lang "website.detail_title"}}</h2>
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+        <div>
+            <h2 class="text-xl font-bold text-white">
+                {{t .Lang "website.detail_title"}}
+                <span x-show="site" class="ml-2 text-base font-medium text-blue-300" x-text="site?.domain || ''"></span>
+            </h2>
+            <p class="text-sm text-gray-500 mt-1">{{t .Lang "website.detail_subtitle"}}</p>
+            <div x-show="site" class="flex flex-wrap items-center gap-2 mt-2">
+                <span :class="site?.status === 'active' ? 'badge-success' : 'badge-warning'" x-text="site?.status === 'active' ? t('website.status_running') : (site?.status === 'migrated' ? t('website.status_migrated') : (site?.status === 'deleting' ? t('website.status_deleting') : t('website.status_paused')))"></span>
+                <span class="badge-info" x-text="site?.site_type === 'php' ? t('website.generic_php_site') : 'WordPress'"></span>
+                <span :class="site?.ssl_enabled ? 'badge-success' : 'badge-warning'" x-text="site?.ssl_enabled ? t('website.ssl_enabled') : t('website.ssl_not_enabled')"></span>
+            </div>
+        </div>
         <a href="/{{.RandomSuffix}}/websites" class="btn-secondary">{{t .Lang "website.back_to_list"}}</a>
     </div>
 
@@ -13,14 +24,21 @@
 <template x-if="site">
     <div>
 
+    <nav class="card py-2 px-3 mb-6 flex flex-wrap items-center gap-1" aria-label="{{t .Lang "website.detail_title"}}">
+        <button type="button" @click="setDetailTab('overview')" :class="detailTab === 'overview' ? 'bg-blue-600 text-white' : 'bg-gray-900/40 text-gray-300 hover:text-white hover:bg-gray-700'" class="text-sm px-3 py-2 rounded">{{t .Lang "website.detail_nav_overview"}}</button>
+        <button type="button" @click="setDetailTab('cache')" :class="detailTab === 'cache' ? 'bg-blue-600 text-white' : 'bg-gray-900/40 text-gray-300 hover:text-white hover:bg-gray-700'" class="text-sm px-3 py-2 rounded">{{t .Lang "website.detail_nav_cache"}}</button>
+        <button type="button" x-show="site.site_type === 'wordpress'" @click="setDetailTab('security')" :class="detailTab === 'security' ? 'bg-blue-600 text-white' : 'bg-gray-900/40 text-gray-300 hover:text-white hover:bg-gray-700'" class="text-sm px-3 py-2 rounded">{{t .Lang "website.detail_nav_protection"}}</button>
+        <button type="button" @click="setDetailTab('logs')" :class="detailTab === 'logs' ? 'bg-blue-600 text-white' : 'bg-gray-900/40 text-gray-300 hover:text-white hover:bg-gray-700'" class="text-sm px-3 py-2 rounded">{{t .Lang "website.detail_nav_logs"}}</button>
+    </nav>
+
     <!-- Row 1: 基本信息 | 网站运行与配置 -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div id="site-overview" x-show="detailTab === 'overview'" class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
         <div class="card" :class="aiAccess.status !== 'disabled' ? 'border border-purple-500 shadow-lg shadow-purple-950/30' : ''">
             <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "website.basic_info"}}</h3>
             <dl class="space-y-3">
                 <div><dt class="text-sm text-gray-400">{{t .Lang "website.domain"}}</dt><dd><a :href="(site.ssl_enabled ? 'https' : 'http') + '://' + site.domain" target="_blank" class="text-blue-400 hover:text-blue-300 hover:underline" x-text="site.domain"></a></dd></div>
                 <div><dt class="text-sm text-gray-400">{{t .Lang "website.aliases"}}</dt><dd class="text-white" x-text="site.aliases || t('common.none')"></dd></div>
-                <div class="pt-2">
+                <div class="pt-2 site-detail-actions">
                     <button @click="openDomainModal()" class="text-sm py-1.5 px-3 rounded" style="background-color: #1e3a5f; color: #93c5fd;">{{t .Lang "website.edit_domain"}}</button>
                     <a :href="(document.body.dataset.panelPrefix || '') + '/files?site_id=' + site.id" class="text-sm py-1.5 px-3 rounded ml-2 inline-block" style="background-color: #1e3a5f; color: #93c5fd;">{{t .Lang "nav.files"}}</a>
                     <a :href="(document.body.dataset.panelPrefix || '') + '/databases/' + site.id" class="text-sm py-1.5 px-3 rounded ml-2 inline-block" style="background-color: #1e3a5f; color: #93c5fd;">{{t .Lang "nav.databases"}}</a>
@@ -36,6 +54,7 @@
                     </dd>
                 </div>
                 <div><dt class="text-sm text-gray-400">{{t .Lang "website.type"}}</dt><dd class="text-white" x-text="site.site_type === 'php' ? t('website.generic_php_site') : 'WordPress'"></dd></div>
+                <div><details class="border-t border-gray-700 pt-3"><summary class="cursor-pointer text-sm text-gray-300">{{t .Lang "website.advanced_site_info"}}</summary><dl class="space-y-3 mt-3">
                 <div class="pt-2 border-t border-gray-700/50">
                     <dt class="text-sm text-gray-400 mb-2">{{t .Lang "website.cdn_real_ip"}}</dt>
                     <div class="rounded border border-blue-900/60 bg-blue-950/30 p-2 mb-2 text-xs text-blue-200">
@@ -75,6 +94,7 @@
                     <p class="text-xs text-gray-500 mt-1">{{t .Lang "website.document_root_detail_help"}}</p>
                 </div>
                 <div><dt class="text-sm text-gray-400">{{t .Lang "website.log_dir"}}</dt><dd class="text-white font-mono text-sm" x-text="site.log_dir"></dd></div>
+                </dl></details></div>
                 <div>
                     <dt class="text-sm text-gray-400">{{t .Lang "website.expiry_time"}}</dt>
                     <dd class="text-white" x-show="!editingExpiry" x-text="site.expires_at ? new Date(site.expires_at).toLocaleDateString('zh-CN') : t('common.none')"></dd>
@@ -188,7 +208,7 @@ location ^~ /api/ {
         </div>
     </div>
 
-        <section x-show="site.site_type === 'wordpress'" id="security-maintenance" class="card mt-6">
+        <section x-show="detailTab === 'security' && site.site_type === 'wordpress'" id="security-maintenance" class="card mt-6">
             <h3 class="text-lg font-semibold text-white mb-2">{{t .Lang "website.scheduled_wp"}}</h3>
             <p class="text-sm text-gray-400 mb-5">{{t .Lang "website.scheduled_wp_help"}}</p>
             <p x-show="wpCronError" class="text-sm text-red-300 mb-3" x-text="wpCronError"></p>
@@ -216,8 +236,8 @@ location ^~ /api/ {
          "仅 WordPress 站点显示"的元素时，必须把本卡片内所有同类元素都加上
          x-show="site.site_type === 'wordpress'"，不能只改自己新加的那一个——
          之前"高级设置"折叠面板就漏加过，导致通用 PHP 站点也看到了停止更新检查等选项。 -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
-        <div class="card" :class="site.site_type === 'wordpress' ? '' : 'md:col-span-2'">
+    <div id="site-performance" x-show="detailTab === 'cache' || detailTab === 'security'" class="grid grid-cols-1 gap-6 mt-6">
+        <div class="card" x-show="detailTab === 'cache'">
             <h3 class="text-lg font-semibold text-white mb-4" x-text="site.site_type === 'wordpress' ? t('website.wp_optimization') : t('website.fastcgi_cache_title')"></h3>
             <div class="flex items-center space-x-3 mb-3">
                 <label class="flex items-center space-x-2 text-sm text-gray-300 cursor-pointer">
@@ -313,7 +333,7 @@ location ^~ /api/ {
             {{template "wp_anomaly_panel" .}}
         </div>
 
-        <div x-show="site.site_type === 'wordpress'" class="card">
+        <div id="site-protection" x-show="detailTab === 'security' && site.site_type === 'wordpress'" class="card">
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div>
                     <div class="flex items-center gap-2 mb-1">
@@ -433,7 +453,7 @@ location ^~ /api/ {
     </div>
 
     <!-- Row 3: 网站日志 -->
-    <div class="mt-6">
+    <div id="site-logs" x-show="detailTab === 'logs'" class="mt-6">
         <div class="card">
             <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "website.site_logs"}}</h3>
             <div class="flex flex-wrap items-center gap-2 mb-3">
@@ -818,7 +838,7 @@ function websiteDetail() {
 			} catch (_) { showToast(t('maintenance.state_unknown'), 'error'); await this.loadMaintenance(); }
 			finally { this.maintenanceSaving = false; }
 		},
-		destroy() { if (this.maintenanceTimer) clearInterval(this.maintenanceTimer); },
+		destroy() { if (this.maintenanceTimer) clearInterval(this.maintenanceTimer); if (this.hashListener) window.removeEventListener('hashchange', this.hashListener); },
         loading: true,
         sslModalOpen: false,
         sslMode: 'auto',
@@ -885,11 +905,48 @@ function websiteDetail() {
         aiCredentialPackage: null,
         aiCredentialDownloaded: false,
         aiAccess: { loading: true, enabled: false, status: 'disabled', busy: false, stage: '', installWPCLI: true, installNodeJS: false, confirmDomain: '', tools: [] },
+        detailTab: 'overview',
+        hashListener: null,
         init() {
+            this.applyDetailHash(false);
+            this.hashListener = () => this.applyDetailHash();
+            window.addEventListener('hashchange', this.hashListener);
             this.fetchDetail();
         },
+        detailTabHash(tab) {
+            return {
+                overview: 'overview',
+                cache: 'cache-performance',
+                security: 'security-maintenance',
+                logs: 'logs'
+            }[tab] || 'overview';
+        },
+        applyDetailHash(loadContent = true) {
+            const hash = (window.location.hash || '').replace(/^#/, '');
+            const tab = {
+                overview: 'overview',
+                'site-overview': 'overview',
+                'cache-performance': 'cache',
+                'site-performance': 'cache',
+                'security-maintenance': 'security',
+                'site-protection': 'security',
+                logs: 'logs',
+                'site-logs': 'logs'
+            }[hash] || 'overview';
+            this.detailTab = tab;
+            if (loadContent && this.site && tab === 'logs') this.fetchLogs();
+        },
+        setDetailTab(tab, updateURL = true) {
+            if (tab === 'security' && this.site?.site_type !== 'wordpress') tab = 'overview';
+            this.detailTab = tab;
+            if (updateURL) {
+                const hash = this.detailTabHash(tab);
+                window.history.replaceState({}, '', window.location.pathname + window.location.search + '#' + hash);
+            }
+            if (tab === 'logs') this.fetchLogs();
+        },
         async fetchDetail() {
-            const id = window.location.pathname.split('/').pop();
+            const id = window.location.pathname.split('/').filter(Boolean).pop();
             try {
                 const r = await api('/websites/' + id);
                 if (r.success) {
@@ -931,7 +988,7 @@ function websiteDetail() {
                 this.fetchAIDevelopment()
             ]);
             deferTask(() => {
-                this.fetchLogs();
+                if (this.detailTab === 'logs') this.fetchLogs();
                 this.fetchLogFiles();
             }, 400);
         },

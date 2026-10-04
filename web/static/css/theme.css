@@ -349,3 +349,10 @@ html[data-theme="light"] textarea {
 .access-rule,.workspace-tabs { border-color:var(--panel-border); }
 .vps-tabs button,.workspace-tabs a { color:var(--panel-muted); }
 .vps-tabs button.active,.workspace-tabs a.selected { color:#fff; }
+
+/* Shared panel layout; retain YUB theme controls without consuming a full nav row. */
+.panel-page-shell { width: 100%; max-width: 1680px; margin: 0 auto; }
+.sidebar-theme { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 12px; }
+.sidebar-theme .theme-toggle { padding: 4px 8px; }
+.site-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.site-detail-actions > * { margin-left: 0; }

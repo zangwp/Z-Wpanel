@@ -628,6 +628,7 @@ func TestWPFleetOverviewPanelAPIContract(t *testing.T) {
 	for _, required := range [][]byte{
 		[]byte(`api('/wp-fleet/overview', { signal: controller.signal, suppressToast: true })`),
 		[]byte(`api('/wp-fleet/inventory-refresh', { method: 'POST' })`),
+		[]byte(`api('/websites/' + site.id + '/wp-inventory/refresh', { method: 'POST', suppressToast: true })`),
 		[]byte(`api('/websites/' + site.id + '/wp-update-checks'`),
 		[]byte(`new TextEncoder().encode(query).length > 128`),
 		[]byte(`toLocaleDateString(currentLocale())`),
@@ -639,7 +640,7 @@ func TestWPFleetOverviewPanelAPIContract(t *testing.T) {
 	}
 	for _, forbidden := range [][]byte{
 		[]byte(`setInterval(`),
-		[]byte(`/wp-inventory`),
+		[]byte(`+ '/wp-inventory'`),
 		[]byte(`toLocaleDateString('zh-CN')`),
 		[]byte(`toLocaleString('zh-CN')`),
 	} {
@@ -1562,8 +1563,11 @@ func TestWebsiteDetailCardOrderAndDatabaseNavigation(t *testing.T) {
 	if !bytes.Contains(source, []byte(`'/databases/' + site.id`)) {
 		t.Fatal("website detail is missing the direct database management link")
 	}
-	if !bytes.Contains(source, []byte(`site.site_type === 'wordpress' ? '' : 'md:col-span-2'`)) {
-		t.Fatal("non-WordPress optimization card does not span the full desktop row")
+	if !bytes.Contains(source, []byte(`id="site-performance" x-show="detailTab === 'cache' || detailTab === 'security'" class="grid grid-cols-1 gap-6 mt-6"`)) {
+		t.Fatal("optimization and protection sections must use a full-width tab layout for either site type")
+	}
+	if !bytes.Contains(source, []byte(`id="site-protection" x-show="detailTab === 'security' && site.site_type === 'wordpress'"`)) {
+		t.Fatal("WordPress-only protection must remain hidden for generic PHP sites")
 	}
 }
 

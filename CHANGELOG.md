@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.3.3 — 2026-10-05
+
+- Complete missing shared panel layouts from OLS: grouped responsive navigation, website maintenance tabs, site detail sections, settings sections, update feedback, alert filters and contextual help.
+- Keep Nginx/PHP-FPM, FastCGI cache, site migration, Optimizer controls and light/dark themes. No OLS runtime configuration is installed.
+- Require the current password before changing the Web login username; apply username/password changes together and preserve the old identity when validation fails.
+- Support operation log filtering and expose actual time synchronization service status to the settings page.
+- Correct mixed `o`/`b` terminal help and exit the in-memory VPS menu after its command is uninstalled.
+
 ## v2.3.2 — 2026-10-05
 
 - Avoid early pipe closure while reading APT candidate versions, which could abort installation immediately after refreshing the Nginx repository under `pipefail`.
