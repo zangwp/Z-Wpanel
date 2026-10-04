@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.3.2 — 2026-10-05
+
+- Avoid early pipe closure while reading APT candidate versions, which could abort installation immediately after refreshing the Nginx repository under `pipefail`.
+- Report the failed installation stage and exit code, and distinguish Nginx repository refresh, candidate lookup, missing packages, and version requirements.
+
 ## v2.3.1 — 2026-10-04
 
 - Group application code under `cmd/` and `internal/`, web resources under `web/`, and auxiliary scripts/Workers under `deploy/`; reduce the root from 21 directories to 8 without removing required code or assets.

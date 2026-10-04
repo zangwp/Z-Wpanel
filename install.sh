@@ -32,6 +32,7 @@ PLATFORM_CODENAME=""
 PLATFORM_ARCH=""
 PANEL_ASSET_NAME=""
 APT_SOURCES_MUTATED=false
+INSTALL_STAGE="权限、平台与发布包安全预检"
 REPAIR_MODE=false
 REPAIR_BACKUP_DIR=""
 REPAIR_SERVICE_WAS_ACTIVE=false
@@ -230,6 +231,7 @@ installer_exit() {
         echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${RED}  安装未完成 / Installation incomplete${NC}"
         echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        printf '  失败阶段: %s；退出码: %s\n' "${INSTALL_STAGE:-未记录}" "$exit_code"
         echo -e "  请先保存本次终端完整输出，不要在未定位原因前直接重装系统。"
         echo -e "  优先检查：网络/DNS 与系统时间、APT 错误、发行包哈希/签名、受支持平台检测，以及现有服务冲突。"
         echo -e "  可结合 ${BOLD}journalctl -u yub-wpanel -n 100 --no-pager${NC} 和 APT 输出排查，再携带已脱敏日志提交 GitHub Issue。"
@@ -1275,7 +1277,7 @@ apt_package_available() {
     local pkg="$1"
     local candidate=""
 
-    candidate=$(LC_ALL=C apt-cache policy "$pkg" 2>/dev/null | awk '/Candidate:/ {print $2; exit}' || true)
+    candidate=$(apt_candidate_version "$pkg" 2>/dev/null || true)
     if [[ -n "$candidate" ]] && [[ "$candidate" != "(none)" ]]; then
         return 0
     fi
@@ -1566,6 +1568,7 @@ select_platform_source() {
 }
 
 configure_redis_repository() {
+	INSTALL_STAGE="配置 Redis APT 源与检查候选版本"
 	local key_download="$INSTALL_WORKDIR/redis-archive-keyring.asc"
 	local keyring="/usr/share/keyrings/yub-wpanel-redis-archive-keyring.asc"
 	local source_file="/etc/apt/sources.list.d/yub-wpanel-redis.sources"
@@ -1605,6 +1608,7 @@ REDISSOURCEEOF
 }
 
 configure_mariadb_repository() {
+	INSTALL_STAGE="配置 MariaDB APT 源与检查候选版本"
 	local key_download="$INSTALL_WORKDIR/mariadb-keyring-2019.gpg"
 	local keyring="/usr/share/keyrings/yub-wpanel-mariadb-archive-keyring.gpg"
 	local source_file="/etc/apt/sources.list.d/yub-wpanel-mariadb.sources"
@@ -1636,7 +1640,11 @@ MARIADBSOURCEEOF
 	log_info "MariaDB ${MARIADB_SERIES} 官方候选包可用: $candidate"
 }
 
-apt_candidate_version() { LC_ALL=C apt-cache policy "$1" | awk '$1 == "Candidate:" {print $2; exit}'; }
+apt_candidate_version() {
+    # Drain the producer: exiting awk early can SIGPIPE apt-cache under pipefail.
+    # Keep pipefail so genuine APT failures still propagate to the caller.
+    LC_ALL=C apt-cache policy "$1" | awk '$1 == "Candidate:" && !found {print $2; found=1}'
+}
 
 install_verified_apt_key() {
     local url="$1" fingerprint="$2" target="$3" download="$INSTALL_WORKDIR/repo-key.asc"
@@ -1668,6 +1676,7 @@ PHPUBUNTUEOF
 }
 
 configure_nginx_repository() {
+    INSTALL_STAGE="配置 Nginx APT 源与检查候选版本"
     local source_file="/etc/apt/sources.list.d/yub-wpanel-nginx.sources"
     local keyring="/usr/share/keyrings/yub-wpanel-nginx.gpg"
     local pin_file="/etc/apt/preferences.d/yub-wpanel-nginx"
@@ -1689,10 +1698,14 @@ Pin: origin nginx.org
 Pin-Priority: 900
 NGINXPINEOF
     APT_SOURCES_MUTATED=true
-    apt-get update
+    apt-get update || log_error "刷新 Nginx APT 源失败，请检查上方 APT 输出"
     local candidate
-    candidate=$(apt_candidate_version nginx)
-    dpkg --compare-versions "$candidate" ge "1.30.5" || log_error "Nginx 稳定仓库候选版本不可用"
+    candidate=$(apt_candidate_version nginx) || log_error "读取 Nginx APT 候选版本失败，请检查 apt-cache policy nginx 的输出"
+    [[ -n "$candidate" ]] && [[ "$candidate" != "(none)" ]] || \
+        log_error "Nginx 稳定仓库未提供候选包（${PLATFORM_CODENAME}/${PLATFORM_ARCH}）"
+    dpkg --compare-versions "$candidate" ge "1.30.5" || \
+        log_error "Nginx 候选版本 ${candidate} 低于所需版本 1.30.5（${PLATFORM_CODENAME}/${PLATFORM_ARCH}）"
+    log_info "Nginx 官方稳定候选包可用: $candidate"
 }
 
 preserve_existing_php_series() {
@@ -2258,6 +2271,7 @@ fi
 # ============================================================
 # 系统检测与Swap配置
 # ============================================================
+INSTALL_STAGE="系统资源与 Swap 检查"
 TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
 log_info "物理内存: ${TOTAL_MEM_MB}MB"
@@ -2318,6 +2332,7 @@ fi
 # ============================================================
 # APT 源配置
 # ============================================================
+INSTALL_STAGE="配置系统 APT 源与基础依赖"
 log_info "配置 APT 源..."
 export DEBIAN_FRONTEND=noninteractive
 log_info "检测到平台: ${PLATFORM_ID} ${PLATFORM_VERSION} (${PLATFORM_CODENAME}) ${PLATFORM_ARCH}"
@@ -2330,6 +2345,7 @@ select_platform_source
 apt-get install -y curl wget unzip ca-certificates gnupg lsb-release
 
 # Debian 13 使用 Sury；Ubuntu 24.04 使用 PHP PPA；Ubuntu 26.04 使用原生 PHP 8.5。
+INSTALL_STAGE="配置 PHP APT 源"
 select_php_source "$PLATFORM_CODENAME"
 configure_nginx_repository
 configure_mariadb_repository
@@ -2338,6 +2354,7 @@ configure_redis_repository
 # ============================================================
 # 安装基础组件
 # ============================================================
+INSTALL_STAGE="安装系统组件"
 log_info "安装系统组件..."
 
 apt-get install -y \
@@ -2380,6 +2397,7 @@ fi
 # ============================================================
 # systemd 进程守护配置
 # ============================================================
+INSTALL_STAGE="配置与启动运行环境服务"
 log_info "配置 systemd 进程守护..."
 
 if ! $REPAIR_MODE; then
@@ -2408,6 +2426,7 @@ fi
 # ============================================================
 # Nginx 基础配置
 # ============================================================
+INSTALL_STAGE="配置 Nginx"
 log_info "配置 Nginx 基础..."
 
 if ! $REPAIR_MODE; then
@@ -2450,6 +2469,7 @@ fi
 # ============================================================
 # 防火墙放行 8443 面板端口
 # ============================================================
+INSTALL_STAGE="配置面板防火墙规则"
 log_info "放行面板端口 8443..."
 
 if ! $REPAIR_MODE; then
@@ -2472,6 +2492,7 @@ fi
 # ============================================================
 # MariaDB 安全加固
 # ============================================================
+INSTALL_STAGE="配置 MariaDB"
 log_info "配置 MariaDB..."
 
 if ! $REPAIR_MODE; then
@@ -2535,6 +2556,7 @@ fi
 # ============================================================
 # 目录结构创建
 # ============================================================
+INSTALL_STAGE="创建面板目录"
 log_info "创建目录结构..."
 
 mkdir -p "$INSTALL_DIR"/{backups,packages,logs,certs}
@@ -2546,6 +2568,7 @@ chmod 700 "$INSTALL_DIR"
 # ============================================================
 # 生成自签名 SSL 证书（有效期 10 年）
 # ============================================================
+INSTALL_STAGE="配置面板 TLS 证书"
 log_info "检查面板 TLS 证书..."
 
 CERT_DIR="$INSTALL_DIR/certs"
@@ -2577,6 +2600,7 @@ fi
 # ============================================================
 # 下载 WordPress 备用包
 # ============================================================
+INSTALL_STAGE="准备 WordPress 安装包"
 log_info "检查 WordPress 备用包..."
 WP_ZIP="$INSTALL_DIR/packages/wordpress.zip"
 WP_ZIP_TMP="$INSTALL_WORKDIR/wordpress.zip"
@@ -2606,6 +2630,7 @@ fi
 # ============================================================
 # 生成面板安全凭证
 # ============================================================
+INSTALL_STAGE="配置面板登录凭据"
 log_info "检查安全凭证..."
 
 if ! $REPAIR_MODE; then
@@ -2651,6 +2676,7 @@ fi
 # ============================================================
 # 写入 config.json
 # ============================================================
+INSTALL_STAGE="写入面板配置"
 log_info "检查配置文件..."
 
 if ! $REPAIR_MODE; then
@@ -2720,6 +2746,7 @@ fi
 # ============================================================
 # 部署 Go 二进制
 # ============================================================
+INSTALL_STAGE="部署面板与许可文件"
 log_info "部署面板二进制..."
 
 prepare_panel_candidate
@@ -2736,6 +2763,7 @@ log_info "许可文档已安装到 $LICENSE_DOC_DIR"
 # ============================================================
 # 创建 systemd 服务
 # ============================================================
+INSTALL_STAGE="部署面板服务"
 log_info "检查 systemd 服务..."
 
 if ! $REPAIR_MODE || [[ ! -f "$SERVICE_PATH" ]]; then
@@ -2768,6 +2796,7 @@ fi
 # ============================================================
 # 运行时健康、版本与监听归属检测
 # ============================================================
+INSTALL_STAGE="面板健康、版本与监听归属检查"
 PORT_OK=false
 if $REPAIR_MODE && ! $REPAIR_SERVICE_WAS_ACTIVE; then
     log_info "临时启动yub-wpanel验证repair后运行时健康"
