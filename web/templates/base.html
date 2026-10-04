@@ -65,7 +65,7 @@
         <div class="panel-layout flex h-screen">
             <!-- Sidebar -->
             <aside x-show="sidebarOpen" @click.away="if (window.innerWidth < 1024) sidebarOpen = false"
-                   class="panel-sidebar fixed lg:static inset-y-0 left-0 z-40 w-64 bg-gray-950 border-r border-gray-800 flex flex-col transition-transform duration-200"
+                   class="panel-sidebar fixed lg:static inset-y-0 left-0 z-40 w-64 flex-shrink-0 bg-gray-950 border-r border-gray-800 flex flex-col transition-transform duration-200"
                    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
                 <div class="sidebar-brand p-4 border-b border-gray-800">
                     <div class="flex items-center gap-3">
@@ -76,14 +76,16 @@
                         </div>
                     </div>
                 </div>
-                <nav class="sidebar-nav flex-1 p-3 space-y-1 overflow-y-auto">
+                <nav class="sidebar-nav flex-1 p-3 overflow-y-auto">
+                    <p class="sidebar-section-label">{{t .Lang "nav.group_overview"}}</p>
                     <a href="/{{$.RandomSuffix}}/" class="sidebar-link {{if eq .Active "dashboard"}}active{{end}}">
                         <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                         </svg>
                         {{t .Lang "nav.dashboard"}}
                     </a>
-                    <a href="/{{$.RandomSuffix}}/websites" class="sidebar-link {{if eq .Active "websites"}}active{{end}}">
+                    <p class="sidebar-section-label">{{t .Lang "nav.group_sites"}}</p>
+                    <a href="/{{$.RandomSuffix}}/websites" class="sidebar-link {{if or (eq .Active "websites") (eq .Active "wordpress_overview")}}active{{end}}">
                         <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
                         </svg>
@@ -101,12 +103,7 @@
                         </svg>
                         {{t .Lang "nav.databases"}}
                     </a>
-                    <a href="/{{$.RandomSuffix}}/wordpress-overview" class="sidebar-link {{if eq .Active "wordpress_overview"}}active{{end}}">
-                        <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M21.469 6.825c.84 1.537 1.318 3.3 1.318 5.175 0 3.979-2.156 7.456-5.363 9.325l3.295-9.527c.615-1.54.82-2.771.82-3.864 0-.405-.026-.78-.07-1.11m-7.981.105c.647-.03 1.232-.105 1.232-.105.582-.075.514-.93-.067-.899 0 0-1.755.135-2.88.135-1.064 0-2.85-.15-2.85-.15-.585-.03-.661.855-.075.885 0 0 .54.061 1.125.09l1.68 4.605-2.37 7.08L5.354 6.9c.649-.03 1.234-.1 1.234-.1.585-.075.516-.93-.065-.896 0 0-1.746.138-2.874.138-.2 0-.438-.008-.69-.015C4.911 3.15 8.235 1.215 12 1.215c2.809 0 5.365 1.072 7.286 2.833-.046-.003-.091-.009-.141-.009-1.06 0-1.812.923-1.812 1.914 0 .89.513 1.643 1.06 2.531.411.72.89 1.643.89 2.977 0 .915-.354 1.994-.821 3.479l-1.075 3.585-3.9-11.61.001.014zM12 22.784c-1.059 0-2.081-.153-3.048-.437l3.237-9.406 3.315 9.087c.024.053.05.101.078.149-1.12.393-2.325.609-3.582.609M1.211 12c0-1.564.336-3.05.935-4.39L7.29 21.709C3.694 19.96 1.212 16.271 1.211 12M12 0C5.385 0 0 5.385 0 12s5.385 12 12 12 12-5.385 12-12S18.615 0 12 0"/>
-                        </svg>
-                        {{t .Lang "nav.wordpress_overview"}}
-                    </a>
+                    <p class="sidebar-section-label">{{t .Lang "nav.group_operations"}}</p>
                     <a href="/{{$.RandomSuffix}}/backups" class="sidebar-link {{if eq .Active "backups"}}active{{end}}">
                         <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v1a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8M10 12h4"/>
@@ -156,7 +153,13 @@
 						</svg>
 						{{t .Lang "nav.log_analysis"}}
 					</a>
-                    <a href="/{{$.RandomSuffix}}/vps" class="sidebar-link {{if eq .Active "vps"}}active{{end}}"><svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M5 4h14v6H5zM5 14h14v6H5zM8 7h1m-1 10h1"/></svg>{{t .Lang "nav.vps"}}</a>
+                    <p class="sidebar-section-label">{{t .Lang "nav.group_system"}}</p>
+                    <a href="/{{$.RandomSuffix}}/vps" class="sidebar-link {{if eq .Active "vps"}}active{{end}}">
+                        <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5m4.75-11.396c.251-.042.506-.075.766-.098m-.766.098a24.301 24.301 0 00-4.103.69m4.869-.788c.26-.023.523-.035.784-.035.26 0 .522.012.782.035m-1.566 0a24.32 24.32 0 014.104.69m-4.104-.69v5.812a2.25 2.25 0 00.659 1.591L19.5 18.75m-14.5-4.25h14.5m-14.5 0l-1.286 2.25A2.25 2.25 0 005.667 20h12.666a2.25 2.25 0 001.953-3.25L19 14.5"/>
+                        </svg>
+                        {{t .Lang "nav.vps"}}
+                    </a>
                     <a href="/{{$.RandomSuffix}}/settings" class="sidebar-link {{if eq .Active "settings"}}active{{end}}">
                         <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -172,17 +175,17 @@
                     </a>
 
                 </nav>
-                <div class="sidebar-footer border-t border-gray-800 pt-2 mt-2">
+                <div class="sidebar-footer flex-shrink-0 border-t border-gray-800 p-3">
                         <div class="sidebar-language text-xs text-gray-500">
-                            <div>{{t .Lang "language.label"}}</div>
+                            <span>{{t .Lang "language.label"}}</span>
                             <div class="flex items-center gap-2">
                                 <a href="?lang=zh-CN" class="{{if eq .Lang "zh-CN"}}text-blue-400{{else}}text-gray-400{{end}}">{{t .Lang "language.chinese"}}</a>
                                 <span>/</span>
                                 <a href="?lang=en-US" class="{{if eq .Lang "en-US"}}text-blue-400{{else}}text-gray-400{{end}}">{{t .Lang "language.english"}}</a>
                             </div>
                         </div>
-                        <div class="px-3 pb-2 text-xs text-gray-500">
-                            <div class="mb-2">{{t .Lang "theme.label"}}</div>
+                        <div class="sidebar-theme text-xs text-gray-500">
+                            <span>{{t .Lang "theme.label"}}</span>
                             <button type="button" @click="toggleTheme()" class="theme-toggle" :aria-label="theme === 'dark' ? '{{t .Lang "theme.switch_light"}}' : '{{t .Lang "theme.switch_dark"}}'">
                                 <svg x-show="theme === 'dark'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364-.707-.707M6.343 6.343l-.707-.707m12.728 0-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
@@ -203,7 +206,8 @@
                 </div>
             </aside>
 
-            <main class="flex-1 overflow-y-auto p-4 md:p-6 lg:pt-6">
+            <main class="min-w-0 flex-1 overflow-y-auto p-4 md:p-6 lg:pt-6">
+                <div class="panel-page-shell">
                 {{if eq .ContentTemplate "vps_content"}}{{template "vps_content" .}}{{end}}
                 {{if eq .ContentTemplate "dashboard_content"}}{{template "dashboard_content" .}}{{end}}
                 {{if eq .ContentTemplate "websites_content"}}{{template "websites_content" .}}{{end}}
@@ -226,6 +230,7 @@
                 {{if eq .ContentTemplate "alert_content"}}{{template "alert_content" .}}{{end}}
                 {{if eq .ContentTemplate "software_content"}}{{template "software_content" .}}{{end}}
                 {{if eq .ContentTemplate "help_content"}}{{template "help_content" .}}{{end}}
+                </div>
             </main>
         </div>
     </div>

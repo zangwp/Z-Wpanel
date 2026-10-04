@@ -1,20 +1,28 @@
 {{template "base" .}}
 {{define "settings_content"}}
-<div x-data="panelSettings()" x-init="fetchSettings()">
-    <h2 class="text-xl font-bold text-white mb-6">{{t .Lang "nav.settings"}}</h2>
+<div x-data="panelSettings()" x-init="initPage()">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+            <h2 class="text-xl font-bold text-white">{{t .Lang "nav.settings"}}</h2>
+            <p class="text-sm text-gray-400 mt-1">{{t .Lang "settings.page_description"}}</p>
+        </div>
+    </div>
 
-    <nav class="software-tabs mb-6" aria-label="{{t .Lang "nav.settings"}}">
-        <button type="button" @click="settingsTab = 'general'" :class="{'active': settingsTab === 'general'}">{{t .Lang "settings.tab_general"}}</button>
-        <button type="button" @click="settingsTab = 'updates'" :class="{'active': settingsTab === 'updates'}">{{t .Lang "settings.tab_updates"}}</button>
-        <button type="button" @click="settingsTab = 'wordpress'" :class="{'active': settingsTab === 'wordpress'}">{{t .Lang "settings.wp_package"}}</button>
-        <button type="button" @click="settingsTab = 'backup'" :class="{'active': settingsTab === 'backup'}">{{t .Lang "settings.panel_db_backup"}}</button>
-        <button type="button" @click="settingsTab = 'logs'" :class="{'active': settingsTab === 'logs'}">{{t .Lang "settings.tab_operation_logs"}}</button>
+    <nav class="settings-section-nav card mb-6 p-2 sticky top-0 z-20" aria-label="{{t .Lang "settings.section_navigation"}}">
+        <div class="flex flex-wrap gap-2">
+            <button type="button" @click="setSection('general')" :class="sectionButtonClass('general')">{{t .Lang "settings.section_general"}}</button>
+            <button type="button" @click="setSection('updates')" :class="sectionButtonClass('updates')">{{t .Lang "settings.section_updates"}}</button>
+            <button type="button" @click="setSection('wordpress')" :class="sectionButtonClass('wordpress')">{{t .Lang "settings.section_wordpress"}}</button>
+            <button type="button" @click="setSection('backups')" :class="sectionButtonClass('backups')">{{t .Lang "settings.section_backups"}}</button>
+            <button type="button" @click="setSection('logs')" :class="sectionButtonClass('logs')">{{t .Lang "settings.section_logs"}}</button>
+        </div>
     </nav>
-    <div x-show="settingsTab === 'general'" class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
-        <div class="card">
+
+    <div x-show="activeSection === 'general' || activeSection === 'updates'" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start mb-6">
+        <div x-show="activeSection === 'general'" class="card">
             <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.account_security"}}</h3>
 
-            <div class="mb-4 p-3 rounded" style="background-color: #0f172a;">
+            <div class="mb-4 p-4 rounded" style="background-color: #0f172a;">
                 <p class="text-xs text-blue-400 font-medium mb-2">{{t .Lang "settings.basic_auth_title"}}</p>
                 <p class="text-xs text-gray-500 mb-3">{{t .Lang "settings.basic_auth_desc"}}</p>
                 <div class="mb-3">
@@ -25,9 +33,10 @@
                     <label class="text-xs text-gray-400">{{t .Lang "settings.password_keep"}}</label>
                     <input type="password" x-model="pw.basic" class="input-field text-sm py-1.5 mt-1" placeholder="{{t .Lang "settings.leave_unchanged_placeholder"}}" autocomplete="new-password">
                 </div>
+                <button @click="saveBasicAuth" :disabled="accountSaving" class="btn-primary w-full mt-4" x-text="accountSaving ? t('settings.saving') : t('settings.save_basic_auth')"></button>
             </div>
 
-            <div class="mb-4 p-3 rounded" style="background-color: #0f172a;">
+            <div class="p-4 rounded" style="background-color: #0f172a;">
                 <p class="text-xs text-green-400 font-medium mb-2">{{t .Lang "settings.web_login_title"}}</p>
                 <p class="text-xs text-gray-500 mb-3">{{t .Lang "settings.web_login_desc"}}</p>
                 <div class="mb-3">
@@ -42,15 +51,16 @@
                         <input type="password" x-model="pw.new2" class="input-field flex-1 text-sm py-1.5" placeholder="{{t .Lang "settings.confirm_new_password_placeholder"}}">
                     </div>
                 </div>
+                <p class="text-xs text-yellow-400 mt-3" x-show="username !== originalUsername">{{t .Lang "settings.username_change_requires_password"}}</p>
+                <button @click="saveWebAccount" :disabled="accountSaving" class="btn-primary w-full mt-4" x-text="accountSaving ? t('settings.saving') : t('settings.save_web_account')"></button>
             </div>
-
-            <button @click="saveAccount" :disabled="accountSaving" class="btn-primary w-full" x-text="accountSaving ? t('settings.saving') : t('settings.save_account_settings')"></button>
             <p class="text-xs text-yellow-400 mt-2" x-show="accountSaved">{{t .Lang "settings.account_saved_logout"}}</p>
         </div>
 
-        <div class="card">
-            <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.server_settings"}}</h3>
+        <div class="card" :class="activeSection === 'updates' ? 'md:col-span-2' : ''">
+            <h3 class="text-lg font-semibold text-white mb-4" x-text="activeSection === 'updates' ? t('settings.section_updates') : t('settings.server_settings')"></h3>
 
+            <div x-show="activeSection === 'general'">
             <div class="mb-4">
                 <label class="label">{{t .Lang "settings.panel_title"}}</label>
                 <div class="flex space-x-2">
@@ -78,10 +88,12 @@
                 <div class="flex items-center justify-between mt-1">
                     <p class="text-xs text-gray-400">{{t .Lang "settings.server_time"}}<span x-text="serverTime" class="text-white font-mono"></span></p>
                     <div class="flex items-center space-x-2">
-                        <span class="text-xs" :class="ntpSynced ? 'text-green-400' : 'text-yellow-400'" x-text="ntpSynced ? t('settings.ntp_synced') : t('settings.ntp_not_synced')"></span>
-                        <button @click="syncNTP()" class="text-xs py-0.5 px-2 rounded" style="background-color: #1e3a5f; color: #93c5fd;">{{t .Lang "settings.sync"}}</button>
+                        <span class="text-xs" :class="ntpSynced ? 'text-green-400' : 'text-yellow-400'" x-text="ntpSynced ? t('settings.ntp_synced') : (ntpEnabled ? t('settings.ntp_waiting') : t('settings.ntp_not_synced'))"></span>
+                        <button @click="syncNTP()" :disabled="ntpSyncing" class="text-xs py-0.5 px-2 rounded" style="background-color: #1e3a5f; color: #93c5fd;" x-text="ntpSyncing ? t('settings.ntp_starting') : t('settings.sync')"></button>
                     </div>
                 </div>
+                <p class="text-xs text-gray-400 mt-2">{{t .Lang "settings.time_help"}}</p>
+                <p x-show="!ntpService" class="mt-1 text-xs text-yellow-300">{{t .Lang "settings.time_service_missing"}}</p>
             </div>
 
             <div class="mb-4">
@@ -91,8 +103,9 @@
                     <button @click="saveServerSetting('hostname', hostname)" :disabled="!hostname" class="btn-primary text-sm">{{t .Lang "settings.save"}}</button>
                 </div>
             </div>
+            </div>
 
-<section class="card mb-6" x-data="panelCertificateSettings()">
+            <section x-show="activeSection === 'general'" class="card mb-6" x-data="panelCertificateSettings()">
  <h3 class="text-white font-semibold mb-4">{{t .Lang "settings.panel_domain_https"}}</h3>
  <label class="label">{{t .Lang "settings.panel_domain"}}</label>
  <div class="flex flex-wrap gap-2">
@@ -107,11 +120,11 @@
  <a x-show="status.login_url" :href="status.login_url" x-text="status.login_url" target="_blank" rel="noopener noreferrer" class="block text-blue-400 mt-3 break-all"></a>
  <p x-show="status.expires_at" class="text-xs text-gray-400 mt-2">{{t .Lang "settings.certificate_expiry"}} <span x-text="status.expires_at"></span></p>
 </section>
-        </div>
-    </div>
 
-    <section id="system-updates" x-show="settingsTab === 'updates'" x-cloak class="card mb-6">
-            <div class="mb-4">
+<div x-show="activeSection === 'updates'" x-cloak>
+            <details class="mb-5 rounded border border-gray-700 p-4" style="background-color: #0f172a;">
+                <summary class="cursor-pointer text-sm text-gray-300">{{t .Lang "settings.advanced_download_settings"}}</summary>
+            <div class="mt-4">
                 <label class="label">{{t .Lang "settings.github_proxy"}}</label>
                 <p class="text-xs text-gray-500 mb-2">{{t .Lang "settings.github_proxy_help"}}</p>
                 <div class="flex space-x-2">
@@ -121,6 +134,7 @@
                 </div>
                 <p x-show="proxyResult" class="text-xs mt-2" :class="proxyOk ? 'text-green-400' : 'text-red-400'" x-text="proxyResult"></p>
             </div>
+            </details>
 
             <hr class="my-4 border-gray-700">
 
@@ -196,40 +210,66 @@
 
             <hr class="my-4 border-gray-700">
 
-            <div x-data="systemUpdate()" x-init="init()">
+            <div id="system-updates" x-data="systemUpdate()" x-init="init()" class="scroll-mt-4">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm text-gray-400">{{t .Lang "settings.system_updates"}}</span>
-                        <span class="text-sm text-white font-mono" x-show="checked && count > 0" x-text="t('settings.available_count', { count })"></span>
+                    <span class="text-sm text-white font-mono" x-show="checked && count > 0" x-text="t('settings.available_count', { count })"></span>
                     <span class="text-xs text-gray-500" x-show="checked && count === 0">{{t .Lang "settings.up_to_date"}}</span>
                 </div>
-                <div x-show="count > 0" class="mb-3 space-y-2">
-                    <template x-for="pkg in packages" :key="pkg.name">
-                        <div class="flex items-center justify-between p-2 rounded" style="background-color: #0f172a; border: 1px solid #1e293b;">
-                            <div class="flex items-center space-x-2">
-                                <span class="text-sm text-white font-mono" x-text="pkg.name"></span>
-                                <span class="text-xs" :class="pkg.repo.includes('security') ? 'text-red-400' : 'text-gray-500'" x-text="pkg.repo"></span>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <span class="text-xs text-gray-400" x-text="pkg.version"></span>
-                                <a x-show="packageCatalogURL" :href="packageDetailsURL(pkg.name)" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:text-blue-300" title="{{t .Lang "settings.package_detail_title"}}">{{t .Lang "settings.query"}}</a>
-                            </div>
+                <div x-show="count > 0" class="mb-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button" @click="filter = 'all'" :class="filter === 'all' ? 'btn-primary text-xs' : 'btn-secondary text-xs'" x-text="t('settings.update_filter_all') + ' (' + count + ')' "></button>
+                            <button type="button" @click="filter = 'security'" :class="filter === 'security' ? 'btn-primary text-xs' : 'btn-secondary text-xs'" x-text="t('settings.update_filter_security') + ' (' + securityCount + ')' "></button>
+                            <button type="button" @click="filter = 'regular'" :class="filter === 'regular' ? 'btn-primary text-xs' : 'btn-secondary text-xs'" x-text="t('settings.update_filter_regular') + ' (' + regularCount + ')' "></button>
                         </div>
-                    </template>
+                        <button type="button" @click="listOpen = !listOpen" class="text-xs text-blue-400 hover:text-blue-300" x-text="listOpen ? t('settings.hide_update_list') : t('settings.show_update_list')"></button>
+                    </div>
+                    <div x-show="listOpen" class="p-2 rounded" style="background-color: #0f172a; border: 1px solid #1e293b;">
+                        <div class="space-y-2 pr-1" style="max-height: 22rem; overflow-y: auto; overscroll-behavior: contain;">
+                            <template x-for="pkg in filteredPackages" :key="pkg.name">
+                                <div class="flex flex-wrap items-center justify-between gap-3 p-2 rounded" style="background-color: #111827; border: 1px solid #1e293b;">
+                                    <div class="min-w-0 flex flex-wrap items-center gap-2">
+                                        <span class="text-sm text-white font-mono" x-text="pkg.name"></span>
+                                        <span class="text-xs" :class="isSecurity(pkg) ? 'text-red-400' : 'text-gray-500'" x-text="pkg.repo"></span>
+                                    </div>
+                                    <div class="flex shrink-0 items-center space-x-3">
+                                        <span class="text-xs text-gray-400" x-text="pkg.version"></span>
+                                        <a x-show="packageCatalogURL" :href="packageDetailsURL(pkg.name)" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:text-blue-300" title="{{t .Lang "settings.package_detail_title"}}">{{t .Lang "settings.query"}}</a>
+                                    </div>
+                                </div>
+                            </template>
+                            <p x-show="filteredPackages.length === 0" class="p-3 text-center text-xs text-gray-500" x-text="t('settings.no_matching_updates')"></p>
+                        </div>
+                    </div>
                     <p class="text-xs text-gray-500 mt-2">{{t .Lang "settings.system_update_help"}}</p>
                 </div>
-                <div class="flex items-center space-x-3">
-                    <button @click="check()" :disabled="checking || updating" class="btn-secondary text-xs" x-text="checking ? t('settings.checking') : t('settings.refresh')"></button>
+                <div class="flex flex-wrap items-center gap-3 py-2" style="background-color: #1e293b;">
+                    <button @click="check(true)" :disabled="checking || updating" class="btn-secondary text-xs" x-text="checking ? t('settings.checking') : t('settings.refresh')"></button>
                     <button @click="doUpdate()" x-show="count > 0" :disabled="updating" class="btn-primary text-xs" x-text="updating ? t('settings.updating') : t('settings.one_click_update')"></button>
                 </div>
                 <p x-show="count > 0" class="text-xs text-yellow-500 mt-2">{{t .Lang "settings.system_update_warning"}}</p>
-                <p x-show="msg" class="text-sm mt-2" :class="failed ? 'text-red-400' : (ok ? 'text-green-400' : 'text-blue-300')" x-text="msg"></p>
-                <pre x-show="detail" x-text="detail" class="text-xs text-gray-400 mt-2 whitespace-pre-wrap break-all"></pre>
-                <p x-show="lastMessage" class="text-xs text-gray-400 mt-3"><span x-text="lastMessage"></span> · <span x-text="formatStatusTime(lastUpdatedAt)"></span></p>
+                <p x-show="lastMessage && !msg" x-cloak class="mt-3 text-xs text-gray-500">
+                    <span>{{t .Lang "settings.last_system_update"}}</span>
+                    <span class="text-gray-300" x-text="lastMessage"></span>
+                    <span x-show="lastUpdatedAt"> · <span x-text="formatStatusTime(lastUpdatedAt)"></span></span>
+                </p>
+                <div x-show="msg" class="mt-3 rounded border border-gray-700 p-3" :class="updating ? 'system-update-running' : (failed ? 'system-update-failed' : (remainingCount > 0 ? 'system-update-warning' : 'system-update-success'))">
+                    <div class="flex items-center justify-between gap-3">
+                        <p class="text-sm" :class="updating ? 'text-blue-400' : (failed ? 'text-red-400' : (remainingCount > 0 ? 'text-yellow-400' : 'text-green-400'))" x-text="msg"></p>
+                        <div class="flex shrink-0 items-center gap-2">
+                            <span x-show="stage" class="text-xs text-gray-500 font-mono" x-text="stage"></span>
+                            <button x-show="!updating" type="button" @click="dismissStatus()" class="text-xs text-gray-400 hover:text-white" title="{{t .Lang "settings.dismiss_status"}}">×</button>
+                        </div>
+                    </div>
+                    <pre x-show="(failed || remainingCount > 0) && detail" class="mt-2 rounded p-2 text-xs whitespace-pre-wrap break-words overflow-auto" style="max-height: 10rem;" x-text="detail"></pre>
+                </div>
             </div>
+            </div>
+        </div>
+    </div>
 
-    </section>
-
-    <div x-show="settingsTab === 'wordpress'" x-cloak class="mb-6">
+    <div id="wordpress-package" x-show="activeSection === 'wordpress'" x-cloak class="mb-6">
         <div class="card" x-data="wpPackage()" x-init="fetchStatus()">
             <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.wp_package"}}</h3>
             <p class="text-xs text-gray-500 mb-4">{{t .Lang "settings.wp_package_help"}}</p>
@@ -297,7 +337,7 @@
 
 	</div>
 
-    <div x-show="settingsTab === 'backup'" x-cloak class="card mb-6" x-data="dbBackup()" x-init="init()">
+    <div id="panel-backups" x-show="activeSection === 'backups'" x-cloak class="card mb-6" x-data="dbBackup()" x-init="init()">
         <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-white">{{t .Lang "settings.panel_db_backup"}}</h3>
             <div class="flex items-center space-x-2">
@@ -337,8 +377,29 @@
         </div>
     </div>
 
-    <div x-show="settingsTab === 'logs'" x-cloak class="card" x-data="operationLogs()" x-init="fetchLogs()">
-        <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.recent_operation_logs"}}</h3>
+    <div id="operation-logs" x-show="activeSection === 'logs'" x-cloak class="card" x-data="operationLogs()" x-init="fetchLogs()">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 class="text-lg font-semibold text-white">{{t .Lang "settings.recent_operation_logs"}}</h3>
+            <button type="button" @click="fetchLogs" class="btn-secondary text-sm">{{t .Lang "settings.refresh_logs"}}</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <input type="search" x-model.debounce.400ms="query" @input="applyFilters" class="input-field text-sm" placeholder="{{t .Lang "settings.log_search_placeholder"}}" maxlength="64">
+            <select x-model="statusFilter" @change="applyFilters" class="input-field text-sm" aria-label="{{t .Lang "settings.filter_status"}}">
+                <option value="">{{t .Lang "settings.all_statuses"}}</option>
+                <option value="success">{{t .Lang "settings.success"}}</option>
+                <option value="failed">{{t .Lang "settings.failed"}}</option>
+                <option value="running">{{t .Lang "settings.running"}}</option>
+                <option value="waiting">{{t .Lang "settings.waiting"}}</option>
+            </select>
+            <label class="flex items-center gap-2 text-sm text-gray-400">
+                <span>{{t .Lang "settings.rows_per_page"}}</span>
+                <select x-model.number="perPage" @change="applyFilters" class="input-field text-sm flex-1">
+                    <option :value="10">10</option>
+                    <option :value="20">20</option>
+                    <option :value="50">50</option>
+                </select>
+            </label>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="border-b border-gray-700">
@@ -353,7 +414,10 @@
                     <template x-for="log in logs" :key="log.id">
                         <tr class="border-b border-gray-700/50">
                             <td class="table-cell text-xs" x-text="fmtTime(log.created_at)"></td>
-                            <td class="table-cell text-sm" x-text="log.operation"></td>
+                            <td class="table-cell text-sm">
+                                <span class="text-gray-200" x-text="operationText(log.operation)"></span>
+                                <p x-show="log.message" class="mt-1 text-xs text-gray-400 break-words" x-text="log.message"></p>
+                            </td>
                             <td class="table-cell text-sm" x-text="log.target || '--'"></td>
                             <td class="table-cell">
                                 <span :class="statusClass(log.status)" x-text="statusText(log.status)"></span>
@@ -476,9 +540,10 @@ function wpPackage() {
 }
 function panelSettings() {
     return {
-        settingsTab: typeof location !== "undefined" && location.hash === "#system-updates" ? "updates" : "general",
+        activeSection: 'general',
         panelTitle: 'YUB WPanel',
         username: '',
+        originalUsername: '',
         basicAuthUser: '',
         githubProxy: '',
         timezone: '',
@@ -487,6 +552,9 @@ function panelSettings() {
         serverTimeBase: 0,
         serverTimeFetchedAt: 0,
         ntpSynced: false,
+        ntpEnabled: false,
+        ntpService: '',
+        ntpSyncing: false,
         proxyTesting: false,
         proxyResult: '',
         proxyOk: false,
@@ -506,17 +574,50 @@ function panelSettings() {
             lastSuccessVersion: ''
         },
         pw: { old: '', new1: '', new2: '', basic: '' },
+        timeTimer: null,
+        destroy() { if (this.timeTimer) clearInterval(this.timeTimer); },
+        initPage() {
+            this.activeSection = this.sectionFromHash();
+            this.fetchSettings();
+            window.addEventListener('hashchange', () => {
+                this.activeSection = this.sectionFromHash();
+            });
+        },
+        sectionFromHash() {
+            const aliases = {
+                '#system-updates': 'updates',
+                '#wordpress-package': 'wordpress',
+                '#panel-backups': 'backups',
+                '#operation-logs': 'logs'
+            };
+            const hash = window.location.hash || '';
+            const requested = aliases[hash] || hash.replace(/^#/, '');
+            return ['general', 'updates', 'wordpress', 'backups', 'logs'].includes(requested) ? requested : 'general';
+        },
+        setSection(section) {
+            if (!['general', 'updates', 'wordpress', 'backups', 'logs'].includes(section)) return;
+            this.activeSection = section;
+            history.replaceState(null, '', '#' + section);
+        },
+        sectionButtonClass(section) {
+            return this.activeSection === section
+                ? 'px-4 py-2 rounded text-sm bg-blue-600 text-white'
+                : 'px-4 py-2 rounded text-sm text-gray-300 hover:bg-gray-700';
+        },
         async fetchSettings() {
             try {
                 const r = await api('/settings');
                 if (r.success) {
                     this.panelTitle = r.data.panel_title || 'YUB WPanel';
                     this.username = r.data.username || '';
+                    this.originalUsername = this.username;
                     this.basicAuthUser = r.data.basic_auth_user || '';
                     this.githubProxy = r.data.github_proxy || '';
                     this.timezone = r.data.timezone || '';
                     this.hostname = r.data.hostname || '';
                     this.ntpSynced = r.data.ntp_synced || false;
+                    this.ntpEnabled = r.data.ntp_enabled || false;
+                    this.ntpService = r.data.ntp_service || '';
                     if (r.data.server_time) {
                         this.serverTimeBase = r.data.server_time;
                         this.serverTimeFetchedAt = Date.now();
@@ -536,7 +637,8 @@ function panelSettings() {
                 }
             } catch(e) {}
             this.tickTime();
-            setInterval(() => this.tickTime(), 1000);
+            if (this.timeTimer) clearInterval(this.timeTimer);
+this.timeTimer = setInterval(() => this.tickTime(), 1000);
         },
         tickTime() {
             if (this.serverTimeBase) {
@@ -552,29 +654,36 @@ function panelSettings() {
                 }
             }
         },
-        async saveAccount() {
-            const body = {};
-
-            if (this.basicAuthUser) body.basic_auth_user = this.basicAuthUser;
-            if (this.pw.basic && this.pw.basic.length >= 8) body.basic_auth_password = this.pw.basic;
-            else if (this.pw.basic && this.pw.basic.length < 8) { showToast(t('settings.basic_auth_password_min_length'), 'error'); return; }
-
-            if (this.username) body.username = this.username;
-            if (this.pw.new1 || this.pw.new2) {
-                if (!this.pw.old) { showToast(t('settings.current_password_required'), 'error'); return; }
+        async saveBasicAuth() {
+            if (!this.basicAuthUser.trim()) { showToast(t('settings.basic_auth_username_required'), 'error'); return; }
+            if (this.pw.basic && this.pw.basic.length < 8) { showToast(t('settings.basic_auth_password_min_length'), 'error'); return; }
+            const body = { basic_auth_user: this.basicAuthUser.trim() };
+            if (this.pw.basic) body.basic_auth_password = this.pw.basic;
+            this.accountSaving = true;
+            try {
+                await api('/settings', { method: 'PUT', body });
+                this.pw.basic = '';
+                showToast(t('settings.basic_auth_saved'), 'success');
+            } catch(e) { showToast(e.message, 'error'); }
+            this.accountSaving = false;
+        },
+        async saveWebAccount() {
+            const username = this.username.trim();
+            const usernameChanged = username !== this.originalUsername;
+            const passwordChanged = Boolean(this.pw.new1 || this.pw.new2);
+            if (!username) { showToast(t('settings.web_username_required'), 'error'); return; }
+            if (!usernameChanged && !passwordChanged) { showToast(t('settings.no_changes'), 'info'); return; }
+            if (!this.pw.old) { showToast(t('settings.current_password_required_for_account'), 'error'); return; }
+            if (passwordChanged) {
                 if (this.pw.new1 !== this.pw.new2) { showToast(t('settings.passwords_not_match'), 'error'); return; }
                 if (this.pw.new1.length < 8) { showToast(t('settings.new_password_min_length'), 'error'); return; }
-                body.old_password = this.pw.old;
-                body.new_password = this.pw.new1;
             }
-
-            if (Object.keys(body).length === 0) { showToast(t('settings.no_changes'), 'info'); return; }
-
+            const body = { username, old_password: this.pw.old };
+            if (passwordChanged) body.new_password = this.pw.new1;
             this.accountSaving = true;
             try {
                 await api('/settings', { method: 'PUT', body });
                 this.accountSaved = true;
-                this.pw = { old: '', new1: '', new2: '', basic: '' };
                 showToast(t('settings.account_saved_please_relogin'), 'success');
                 setTimeout(async () => {
                     try { await api('/auth/logout', { method: 'POST' }); } catch(e) {}
@@ -583,11 +692,15 @@ function panelSettings() {
             } catch(e) { showToast(e.message, 'error'); this.accountSaving = false; }
         },
         async syncNTP() {
+            if (this.ntpSyncing) return;
+            this.ntpSyncing = true;
             try {
-                const r = await api('/settings', { method: 'PUT', body: { ntp_sync: true } });
-                showToast(r.data?.message || t('settings.time_sync_triggered'), 'success');
-                this.ntpSynced = true;
+                await api('/settings', { method: 'PUT', body: { ntp_sync: true }, timeout: 130000 });
+                await this.fetchSettings();
+                showToast(t('settings.time_sync_triggered'), 'success');
+                if (!this.ntpSynced) setTimeout(() => this.fetchSettings(), 5000);
             } catch(e) { showToast(e.message, 'error'); }
+            finally { this.ntpSyncing = false; }
         },
         async saveBasic() {
             try {
@@ -667,15 +780,18 @@ function versionCheck() {
                     this.latestVersion = r.data.latest_version || "";
                     this.releaseNotes = r.data.release_notes || "";
                     this.hasUpdate = r.data.has_update;
-                    if (r.data.error) this.updateError = r.data.error;
+                    this.updateError = r.data.error || "";
+return !this.updateError;
                 }
-            } catch(e) {}
+                this.updateError = r.message || t("settings.update_check_failed");
+            } catch(e) { this.updateError = e.message || t("settings.update_check_failed"); }
+return false;
         },
         async checkUpdate() {
             this.checking = true;
             this.updateError = "";
-            await this.fetchVersion();
-            if (!this.hasUpdate && !this.updateError) showToast(t('settings.up_to_date_message'), "success");
+            const checked = await this.fetchVersion();
+            if (checked && !this.hasUpdate && !this.updateError) showToast(t('settings.up_to_date_message'), "success");
             this.checking = false;
         },
         progressPercent() {
@@ -811,6 +927,7 @@ function dbBackup() {
                 const r = await api('/settings/db-backup/restore', { method: 'POST', body: { filename } });
                 showToast(r.data?.message || t('settings.restoring'), 'success');
                 localStorage.setItem('yubWPanelDBRestoreID', r.data.restore_id);
+                localStorage.removeItem('yubWPanelDBRestoreID');
                 await this.waitForRestore(r.data.restore_id);
             } catch(e) {
                 this.restoring = false;
@@ -852,9 +969,15 @@ function operationLogs() {
         logPage: 1,
         logTotalPages: 1,
         logTotal: 0,
+        query: '',
+        statusFilter: '',
+        perPage: 10,
         async fetchLogs() {
             try {
-                const r = await api('/settings/logs?page=' + this.logPage);
+                const params = new URLSearchParams({ page: String(this.logPage), per_page: String(this.perPage) });
+                if (this.statusFilter) params.set('status', this.statusFilter);
+                if (this.query.trim()) params.set('q', this.query.trim());
+                const r = await api('/settings/logs?' + params.toString());
                 if (r.success) {
                     this.logs = r.data?.data || r.data || [];
                     this.logTotal = r.data?.total || this.logs.length;
@@ -862,6 +985,10 @@ function operationLogs() {
                     this.logTotalPages = r.data?.total_pages || 1;
                 }
             } catch(e) { console.error('fetchLogs error:', e); }
+        },
+        applyFilters() {
+            this.logPage = 1;
+            this.fetchLogs();
         },
         logGoPage(p) {
             if (p < 1 || p > this.logTotalPages) return;
@@ -884,6 +1011,30 @@ function operationLogs() {
             if (status === 'failed') return 'badge-danger';
             if (status === 'running' || status === 'waiting') return 'badge-warning';
             return 'badge-info';
+        },
+        operationText(operation) {
+            const keys = {
+                panel_manual_update: 'settings.operation_panel_manual_update',
+                panel_auto_update: 'settings.operation_panel_auto_update',
+                swap_apply_recommended: 'settings.operation_swap_apply_recommended',
+                swap_remove_managed: 'settings.operation_swap_remove_managed',
+                swap_apply_custom: 'settings.operation_swap_apply_custom',
+                nftables_enable_boot: 'settings.operation_nftables_enable_boot',
+                dns_apply_preset: 'settings.operation_dns_apply_preset',
+                dns_restore_automatic: 'settings.operation_dns_restore_automatic',
+                firewall_port_open: 'settings.operation_firewall_port_open',
+                firewall_port_close: 'settings.operation_firewall_port_close',
+                firewall_protection_enable: 'settings.operation_firewall_protection_enable',
+                firewall_protection_confirm: 'settings.operation_firewall_protection_confirm',
+                create_site: 'settings.operation_create_site',
+                wp_package_auto_check: 'settings.operation_wp_package_auto_check',
+                redis_object_cache_clear: 'settings.operation_redis_object_cache_clear',
+                wp_optimizations: 'settings.operation_wp_optimizations',
+                wp_update_checks: 'settings.operation_wp_update_checks',
+                wp_file_editor: 'settings.operation_wp_file_editor',
+                wp_password_reset: 'settings.operation_wp_password_reset'
+            };
+            return keys[operation] ? t(keys[operation]) : String(operation || '').replace(/_/g, ' ');
         },
         get logPageNumbers() {
             const pages = [];
@@ -1071,6 +1222,6 @@ function panelCertificateSettings() {
   async apply(){if(!await confirmModal(t('settings.panel_certificate_confirm')))return;this.starting=true;this.message='';try{await api('/settings/panel-certificate',{method:'POST',body:{domain:this.domain}});await this.refresh();}catch(e){this.message=e.message;this.verified=false;}finally{this.starting=false;}}
  };
 }
-
 </script>
+
 {{end}}

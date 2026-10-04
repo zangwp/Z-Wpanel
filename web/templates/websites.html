@@ -1,5 +1,6 @@
 {{template "base" .}}
 {{define "websites_content"}}
+{{template "website_navigation" .}}
 <div x-data="websiteList()" x-init="fetchList()">
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-xl font-bold text-white">{{t .Lang "nav.websites"}}</h2>
