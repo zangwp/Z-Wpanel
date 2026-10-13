@@ -312,6 +312,14 @@ func (l *siteBackupFixtureReadLock) Close() error { l.closed = true; return nil 
 func siteBackupPairedFixture(t *testing.T) (*siteBackupFreeze, *models.SiteBackupManifest, string) {
 	t.Helper()
 	site := fullRestoreLiveFixture(t, true)
+	oldConfig := config.AppConfig
+	fixtureConfig := config.Config{}
+	if oldConfig != nil {
+		fixtureConfig = *oldConfig
+	}
+	fixtureConfig.Paths.WWWRoot = filepath.Dir(site.WebRoot)
+	config.AppConfig = &fixtureConfig
+	t.Cleanup(func() { config.AppConfig = oldConfig })
 	site.Domain = "example.com"
 	site.Aliases = "www.example.com"
 	site.DBName = "site_db"

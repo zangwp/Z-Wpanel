@@ -3,8 +3,11 @@ package handlers
 import (
 	"context"
 	"errors"
+	"github.com/gin-gonic/gin"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/zangwp/Z-Wpanel/internal/config"
 	"github.com/zangwp/Z-Wpanel/internal/executor"
@@ -15,6 +18,18 @@ var (
 	listWebsiteSiteBackups        = executor.ListSiteBackups
 	hasWebsiteSiteBackupArtifacts = executor.HasSiteBackupArtifacts
 )
+
+func rejectWebsiteBackupLifecycle(c *gin.Context, site *models.Website) bool {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	usage, err := collectWebsiteSiteBackupUsage(ctx, site)
+	if err == nil && !usage.SiteBackupsDeleteBlocked {
+		return false
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusConflict, models.ErrorResponse("请先核对并清理该网站的整站恢复点与保留的恢复现场，再删除网站或更换主域名"))
+	return true
+}
 
 type websiteSiteBackupUsage struct {
 	SiteBackupCount             int  `json:"site_backup_count"`

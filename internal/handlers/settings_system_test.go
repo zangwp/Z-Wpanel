@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,8 @@ func updateSystemSetting(t *testing.T, body string) *httptest.ResponseRecorder {
 
 func updateSystemSettingWithHandler(t *testing.T, handler *SettingsHandler, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	if handler.Auth == nil && database.GetDB() != nil {
+	credentialChange := strings.Contains(body, `"username"`) || strings.Contains(body, `"old_password"`) || strings.Contains(body, `"basic_auth_`)
+	if credentialChange && handler.Auth == nil && database.GetDB() != nil {
 		db := database.GetDB()
 		if err := accountsecurity.InitMFASchema(db); err != nil {
 			t.Fatal(err)

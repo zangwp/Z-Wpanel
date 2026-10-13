@@ -614,6 +614,9 @@ func (h *WebsiteHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	if rejectWebsiteBackupLifecycle(c, site) {
+		return
+	}
 	payload := &executor.DeleteSitePayload{Site: site}
 	task, queued := enqueueTask(c, executor.TaskDeleteSite, payload)
 	if !queued {
@@ -1125,6 +1128,9 @@ func (h *WebsiteHandler) UpdateDomains(c *gin.Context) {
 	}
 
 	if targetDomain != site.Domain {
+		if rejectWebsiteBackupLifecycle(c, site) {
+			return
+		}
 		if conflict, existing := isAliasConflicting(targetDomain, site.ID); conflict {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse("域名 "+targetDomain+" 已被站点 "+existing+" 使用"))
 			return

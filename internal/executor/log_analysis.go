@@ -45,7 +45,7 @@ func ReconcileInterruptedLogAnalysisJobs(db *sql.DB) (int64, error) {
 
 var combinedLogPattern = regexp.MustCompile(`^(\S+) \S+ \S+ \[([^]]+)\] "(\S+) ([^ ]+) [^"]+" (\d{3}) \S+ "[^"]*" "([^"]*)"`)
 var accessLogPeerPattern = regexp.MustCompile(`(?:^|\s)peer=(\S+)\s*$`)
-var nativeAccessLogPeerPattern = regexp.MustCompile(`(?:^|\s)peer=(\S+) ols_security="(?:sqli|sensitive|uploads_php|xmlrpc|-)" ols_autoban="[01-]"$`)
+var nativeAccessLogPeerPattern = regexp.MustCompile(`(?:^|\s)peer=(\S+) yub_security="(?:sqli|sensitive|uploads_php|xmlrpc|-)" yub_autoban="[01-]"$`)
 var bracketTimePattern = regexp.MustCompile(`^\[([^]]+)\]`)
 var webTimePattern = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`)
 var logAnalysisIPv4Pattern = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)

@@ -187,7 +187,7 @@ func CollectWebsiteSecurityStatus(ctx context.Context, site *models.Website) mod
 		if check.State == "error" {
 			switch check.Key {
 			case "sensitive_files", "uploads_php", "xmlrpc", "sql_injection":
-				check.ReasonCode = "ols_rules_not_confirmed"
+				check.ReasonCode = "nginx_rules_not_confirmed"
 			case "application_passwords":
 				check.ReasonCode = "native_policy_not_confirmed"
 			case "file_editing", "wp_updates":

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -149,13 +150,23 @@ func lookup(lang, key string) string {
 func AllMessageKeys() []string {
 	seen := map[string]bool{}
 	keys := []string{}
-	for _, locale := range messages {
-		for key := range locale {
-			if !seen[key] {
+	var walk func(map[string]any, string)
+	walk = func(locale map[string]any, prefix string) {
+		for key, value := range locale {
+			if prefix != "" {
+				key = prefix + "." + key
+			}
+			if nested, ok := value.(map[string]any); ok {
+				walk(nested, key)
+			} else if _, ok := value.(string); ok && !seen[key] {
 				seen[key] = true
 				keys = append(keys, key)
 			}
 		}
 	}
+	for _, locale := range messages {
+		walk(locale, "")
+	}
+	sort.Strings(keys)
 	return keys
 }

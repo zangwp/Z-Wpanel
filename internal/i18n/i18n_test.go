@@ -1,10 +1,44 @@
 package i18n
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 )
+
+func TestAllMessageKeysIncludesLeavesAndPageMessages(t *testing.T) {
+	keys := AllMessageKeys()
+	found := map[string]bool{}
+	for _, key := range keys {
+		found[key] = true
+	}
+	for _, key := range []string{"common.request_failed", "nav.dashboard", "site_security.verifying", "settings.saving"} {
+		if !found[key] {
+			t.Fatalf("missing leaf key %s", key)
+		}
+	}
+	if found["common"] || found["settings"] {
+		t.Fatal("translation namespace exposed as a leaf")
+	}
+	catalog, err := NewTemplateMessages(os.DirFS("../../web"), keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lang := range []string{DefaultLang, English} {
+		var values map[string]string
+		if err := json.Unmarshal([]byte(catalog.JSON(lang, "settings")), &values); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"common.request_failed", "settings.saving"} {
+			if values[key] == "" || strings.TrimSpace(values[key]) == key {
+				t.Fatalf("%s/%s has no actual translation", lang, key)
+			}
+		}
+	}
+}
 
 func TestNormalizeLang(t *testing.T) {
 	tests := map[string]string{

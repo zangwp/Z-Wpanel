@@ -1734,7 +1734,7 @@ func TestFileManagerStartsWithDirectoryList(t *testing.T) {
 		[]byte(`url.searchParams.set('site_id', this.selectedSite)`),
 		[]byte(`calculateDirectorySize(siteID, path)`),
 		[]byte(`'/files/size?site_id='`),
-		[]byte(`timeout: 65000, suppressToast: true`),
+		[]byte(`timeout: 65000, silent: true, signal: controller.signal`),
 		[]byte(`deepLinkFailed: false`),
 		[]byte(`this.deepLinkFailed = true`),
 	} {
