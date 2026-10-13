@@ -20,7 +20,7 @@ const siteBackupStreamTestSQL = "CREATE TABLE snapshot (id int);\nINSERT INTO sn
 // Model the mysqldump/mysql process boundary while exercising the production
 // compression, pipe and restore paths. No running MariaDB daemon is required.
 func TestSiteBackupStreamProcessHelper(t *testing.T) {
-	if os.Getenv("OLS_SITE_BACKUP_STREAM_HELPER") != "1" {
+	if os.Getenv("YUB_SITE_BACKUP_STREAM_HELPER") != "1" {
 		return
 	}
 	args := os.Args
@@ -32,7 +32,7 @@ func TestSiteBackupStreamProcessHelper(t *testing.T) {
 	}
 	switch args[1] {
 	case "mysqldump":
-		switch os.Getenv("OLS_SITE_BACKUP_STREAM_MODE") {
+		switch os.Getenv("YUB_SITE_BACKUP_STREAM_MODE") {
 		case "fail":
 			_, _ = io.WriteString(os.Stdout, siteBackupStreamTestSQL)
 			_, _ = io.WriteString(os.Stderr, "injected dump failure")
@@ -61,11 +61,11 @@ func TestSiteBackupStreamProcessHelper(t *testing.T) {
 
 func useSiteBackupStreamTestCommand(t *testing.T) {
 	t.Helper()
-	t.Setenv("OLS_SITE_BACKUP_STREAM_HELPER", "1")
+	t.Setenv("YUB_SITE_BACKUP_STREAM_HELPER", "1")
 	root := t.TempDir()
 	oldConfig := config.AppConfig
 	config.AppConfig = &config.Config{Panel: config.PanelConfig{DataDir: root, BackupDir: root}}
-	t.Setenv("OLS_IMPORT_TEST_STATE", filepath.Join(root, "identity-state"))
+	t.Setenv("YUB_IMPORT_TEST_STATE", filepath.Join(root, "identity-state"))
 	t.Cleanup(func() { config.AppConfig = oldConfig })
 	oldCommand := databaseBackupCommand
 	databaseBackupCommand = func(ctx context.Context, command string, args ...string) *exec.Cmd {
@@ -107,7 +107,7 @@ func TestSiteBackupDatabaseStreamRoundTrip(t *testing.T) {
 
 func TestSiteBackupDatabaseStreamRemovesFailedArtifact(t *testing.T) {
 	useSiteBackupStreamTestCommand(t)
-	t.Setenv("OLS_SITE_BACKUP_STREAM_MODE", "fail")
+	t.Setenv("YUB_SITE_BACKUP_STREAM_MODE", "fail")
 	path := filepath.Join(t.TempDir(), "database.sql.gz")
 	err := dumpSiteBackupDatabase(context.Background(), "site_db", "test-not-secret", path)
 	if err == nil || !strings.Contains(err.Error(), "injected dump failure") {
@@ -120,7 +120,7 @@ func TestSiteBackupDatabaseStreamRemovesFailedArtifact(t *testing.T) {
 
 func TestSiteBackupDatabaseStreamHonorsCancellation(t *testing.T) {
 	useSiteBackupStreamTestCommand(t)
-	t.Setenv("OLS_SITE_BACKUP_STREAM_MODE", "wait")
+	t.Setenv("YUB_SITE_BACKUP_STREAM_MODE", "wait")
 	path := filepath.Join(t.TempDir(), "database.sql.gz")
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()

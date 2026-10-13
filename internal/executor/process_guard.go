@@ -290,9 +290,6 @@ func (pg *ProcessGuard) loadPaused() {
 	}
 	for _, s := range pg.services {
 		v, ok := paused[s.ServiceName]
-		if !ok && s.ServiceName == "lshttpd" {
-			v, ok = paused["lsws"]
-		}
 		if ok {
 			s.Paused = v
 		}
@@ -454,8 +451,11 @@ func logIncident(s *GuardService, event, message string, notify bool) {
 }
 
 func isCoreGuardService(service string) bool {
+	if service == PHPFPMService() {
+		return true
+	}
 	switch service {
-	case "lshttpd", "mariadb", "redis-server":
+	case "nginx", "mariadb", "redis-server":
 		return true
 	default:
 		return false

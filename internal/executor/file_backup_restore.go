@@ -166,7 +166,7 @@ func executeRestoreFileBackup(task *Task) TaskResult {
 	}
 	// File restoration is complete independently of its optional component scan.
 	// Never keep old runtime evidence or an integrity baseline for replaced code.
-	// Existing cache helpers restart the shared OLS instance or invoke unbounded
+	// Existing cache helpers reload shared FPM workers or invoke unbounded
 	// redis-cli scans. Neither is an appropriate implicit per-site restore step.
 	warnings := []string{"磁盘文件恢复已完成；运行中的 PHP OPcache、页面缓存、Redis 和 CDN 缓存仍需核对或手动清理，线上新代码执行尚未验证"}
 	if _, err = db.ExecContext(ctx, `UPDATE websites SET updated_at=CURRENT_TIMESTAMP WHERE id=?`, site.ID); err != nil {
@@ -644,8 +644,8 @@ func verifyFileRestorePrivateDirectory(name string) error {
 }
 
 func removeFileRestoreGeneratedCaches(root *os.Root) error {
-	// OPcache belongs to FPM workers; disk caches are invalidated through the
-	// Nginx cache API after the restored tree has passed verification.
+	// Disk-cache layouts can belong to customer plugins. Preserve those files;
+	// the operation result explicitly requires separate runtime/cache checks.
 	return nil
 }
 

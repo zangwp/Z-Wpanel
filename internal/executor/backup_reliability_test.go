@@ -22,7 +22,7 @@ import (
 // child models durable table state so tests observe the rollback result, not
 // merely a sequence of mock calls.
 func TestDatabaseBackupProcessHelper(t *testing.T) {
-	if os.Getenv("OLS_BACKUP_TEST_HELPER") != "1" {
+	if os.Getenv("YUB_BACKUP_TEST_HELPER") != "1" {
 		return
 	}
 	args := os.Args
@@ -33,7 +33,7 @@ func TestDatabaseBackupProcessHelper(t *testing.T) {
 		os.Exit(2)
 	}
 	command := args[1]
-	statePath := os.Getenv("OLS_BACKUP_TEST_STATE")
+	statePath := os.Getenv("YUB_BACKUP_TEST_STATE")
 	fail := func(message string) {
 		fmt.Fprintln(os.Stderr, message)
 		os.Exit(1)
@@ -48,7 +48,7 @@ func TestDatabaseBackupProcessHelper(t *testing.T) {
 		}
 	}
 	if command == "mysqldump" {
-		if os.Getenv("OLS_BACKUP_TEST_DUMP_FAIL") == "1" {
+		if os.Getenv("YUB_BACKUP_TEST_DUMP_FAIL") == "1" {
 			fail("snapshot unavailable")
 		}
 		state, err := os.ReadFile(statePath)
@@ -87,7 +87,7 @@ func TestDatabaseBackupProcessHelper(t *testing.T) {
 		}
 		fail("injected import error after partial write")
 	case strings.Contains(sql, "ORIGINAL_original"):
-		if os.Getenv("OLS_BACKUP_TEST_ROLLBACK_FAIL") == "1" {
+		if os.Getenv("YUB_BACKUP_TEST_ROLLBACK_FAIL") == "1" {
 			fail("injected rollback error")
 		}
 		state = "original"
@@ -129,8 +129,8 @@ func setupDatabaseRestoreTest(t *testing.T, sql string) (*Task, string, string) 
 	if err := os.WriteFile(statePath, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OLS_BACKUP_TEST_HELPER", "1")
-	t.Setenv("OLS_BACKUP_TEST_STATE", statePath)
+	t.Setenv("YUB_BACKUP_TEST_HELPER", "1")
+	t.Setenv("YUB_BACKUP_TEST_STATE", statePath)
 	oldCommand, oldPassword, oldConfig := databaseBackupCommand, restoreBackupPassword, config.AppConfig
 	databaseBackupCommand = backupTestCommand
 	restoreBackupPassword = func() string { return "test-password" }
@@ -161,7 +161,7 @@ func TestExecuteRestoreBackupRollsBackFailedImport(t *testing.T) {
 
 func TestExecuteRestoreBackupStopsBeforeDeleteWhenSnapshotFails(t *testing.T) {
 	task, state, _ := setupDatabaseRestoreTest(t, "CREATE TABLE replacement (id int); -- REPLACEMENT\n")
-	t.Setenv("OLS_BACKUP_TEST_DUMP_FAIL", "1")
+	t.Setenv("YUB_BACKUP_TEST_DUMP_FAIL", "1")
 	result := executeRestoreBackup(task)
 	if result.Success || !strings.Contains(result.Message, "数据库未修改") {
 		t.Fatalf("result = %#v", result)
@@ -172,7 +172,7 @@ func TestExecuteRestoreBackupStopsBeforeDeleteWhenSnapshotFails(t *testing.T) {
 }
 
 func TestExecuteRestoreBackupIdentityFailureDoesNotClearOriginalDatabase(t *testing.T) {
-	for _, failure := range []string{"OLS_IMPORT_TEST_CREATE_FAIL", "OLS_IMPORT_TEST_GRANTS_FAIL", "OLS_IMPORT_TEST_ISOLATION_FAIL", "OLS_IMPORT_TEST_AUTH_FAIL"} {
+	for _, failure := range []string{"YUB_IMPORT_TEST_CREATE_FAIL", "YUB_IMPORT_TEST_GRANTS_FAIL", "YUB_IMPORT_TEST_ISOLATION_FAIL", "YUB_IMPORT_TEST_AUTH_FAIL"} {
 		t.Run(failure, func(t *testing.T) {
 			task, state, _ := setupDatabaseRestoreTest(t, "CREATE TABLE replacement (id int); -- REPLACEMENT\n")
 			t.Setenv(failure, "1")
@@ -190,7 +190,7 @@ func TestExecuteRestoreBackupIdentityFailureDoesNotClearOriginalDatabase(t *test
 
 func TestExecuteRestoreBackupRetainsSnapshotWhenRollbackFails(t *testing.T) {
 	task, _, safetyRoot := setupDatabaseRestoreTest(t, "CREATE TABLE replacement (id int);\nINVALID_IMPORT;\n")
-	t.Setenv("OLS_BACKUP_TEST_ROLLBACK_FAIL", "1")
+	t.Setenv("YUB_BACKUP_TEST_ROLLBACK_FAIL", "1")
 	result := executeRestoreBackup(task)
 	if result.Success || !strings.Contains(result.Message, "自动回滚失败") {
 		t.Fatalf("result = %#v", result)
@@ -308,7 +308,7 @@ func TestVerifyDatabaseSnapshotRejectsCorruptTrailer(t *testing.T) {
 }
 
 func TestDatabaseDumpWriteFailureStopsProducerPromptly(t *testing.T) {
-	t.Setenv("OLS_BACKUP_TEST_HELPER", "1")
+	t.Setenv("YUB_BACKUP_TEST_HELPER", "1")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := backupTestCommand(ctx, "flood")

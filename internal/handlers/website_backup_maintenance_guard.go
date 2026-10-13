@@ -153,13 +153,13 @@ func backupMaintenanceGlobalWrite(route string) bool {
 	return false
 }
 
-// These otherwise site-scoped operations can restart/rebuild the shared OLS
+// These otherwise site-scoped operations can reload/rebuild shared Nginx/FPM
 // configuration. A write for another site must not remove the coordinator's
 // temporary maintenance vhost or restart its PHP runtime mid-snapshot.
 func backupMaintenanceSharedSiteWrite(route string) bool {
 	switch route {
 	case "/api/websites/:id/status", "/api/websites/:id/domains", "/api/websites/:id/ssl",
-		"/api/websites/:id/cache", "/api/websites/:id/litespeed-cache/migrate",
+		"/api/websites/:id/cache", "/api/websites/:id/nginx-custom",
 		"/api/websites/:id/document-root", "/api/websites/:id/php-version", "/api/websites/:id/cdn-realip",
 		"/api/websites/:id", "/api/sites/clear-cache", "/api/sites/cache-settings":
 		return true

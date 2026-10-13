@@ -120,7 +120,7 @@ func TestLegacyDistributionNamesDoNotReturn(t *testing.T) {
 		}
 		lowerContent := strings.ToLower(string(content))
 		for _, legacyName := range legacyNames {
-			if strings.Contains(lowerContent, legacyName) {
+			if regexp.MustCompile(`` + regexp.QuoteMeta(legacyName) + ``).MatchString(lowerContent) {
 				t.Errorf("legacy distribution name %q found in %s", legacyName, path)
 			}
 		}

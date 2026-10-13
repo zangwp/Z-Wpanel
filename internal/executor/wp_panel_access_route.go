@@ -15,7 +15,7 @@ import (
 )
 
 // VerifyWPPanelAccessLoginRoute tests the real front controller before the new
-// suffix is committed. It dials this machine's OLS listener, never user DNS, and
+// suffix is committed. It dials this machine's Nginx listener, never user DNS, and
 // does not follow redirects or submit a login/attack/password request.
 func VerifyWPPanelAccessLoginRoute(ctx context.Context, site *models.Website, settings WPPanelAccessSettings) error {
 	if site == nil || !IsValidDomain(site.Domain) || settings.LoginSuffix == "" || len(settings.Generation) != 32 {

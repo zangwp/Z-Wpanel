@@ -433,7 +433,7 @@ func DeleteSiteBackup(ctx context.Context, site *models.Website, id string) erro
 }
 
 func siteBackupArtifactExcludes() []string {
-	return []string{"--exclude=*/.lscache", "--exclude=*/wp-content/cache", "--exclude=*/wp-content/litespeed", "--exclude=*/wp-content/upgrade", "--exclude=*/.maintenance"}
+	return []string{"--exclude=*/wp-content/cache", "--exclude=*/wp-content/upgrade", "--exclude=*/.maintenance"}
 }
 
 func safeSiteBackupMessage(err error) string {

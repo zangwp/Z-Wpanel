@@ -139,7 +139,7 @@ func TestFullFileRestorePreservesCurrentConfigManagedCodeAndSafety(t *testing.T)
 	assertFullRestoreFile(t, filepath.Join(site.WebRoot, "wp-content/plugins/yub-wpanel-optimizer/current.php"), "current companion identity")
 	assertFullRestoreFile(t, filepath.Join(site.WebRoot, "wp-content/mu-plugins/yub-wpanel-access.php"), "current auth identity")
 	assertFullRestoreFile(t, filepath.Join(site.WebRoot, "wp-content/mu-plugins/customer.php"), "restored customer helper")
-	for _, name := range []string{".maintenance", ".lscache", "wp-content/litespeed", "wp-content/plugins/yub-wpanel-optimizer/old.php", "wp-content/mu-plugins/yub-wpanel-obsolete.php"} {
+	for _, name := range []string{".maintenance", "wp-content/plugins/yub-wpanel-optimizer/old.php", "wp-content/mu-plugins/yub-wpanel-obsolete.php"} {
 		if _, err := os.Lstat(filepath.Join(site.WebRoot, name)); !os.IsNotExist(err) {
 			t.Fatalf("obsolete %s retained: %v", name, err)
 		}

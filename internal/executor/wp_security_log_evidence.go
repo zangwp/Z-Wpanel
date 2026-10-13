@@ -136,7 +136,7 @@ func isWPSecurityReadOnlyProbe(evidence wpSecurityLogEvidence) bool {
 }
 
 // HasRecentWPSecurityEvidence reports observed events, never enabled-state claims
-// based on an empty file. SQLi evidence requires this panel's native OLS marker;
+// based on an empty file. SQLi evidence requires this panel's native Nginx marker;
 // login evidence requires the dedicated WordPress authentication-failure format.
 func HasRecentWPSecurityEvidence(logDir, kind string, since ...time.Time) bool {
 	_, ok := RecentWPSecurityEvidenceTime(logDir, kind, since...)

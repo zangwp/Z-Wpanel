@@ -36,10 +36,10 @@ func wpAccessHandlerFixture(t *testing.T) (*AuthHandler, *gin.Engine) {
 	h := &WPPanelAccessHandler{Auth: auth}
 	router := gin.New()
 	p := router.Group("/api", middleware.SessionRequired(), middleware.CSRF())
-	p.GET("/websites/:id/wp-panel-access", h.Status)
-	p.POST("/websites/:id/wp-panel-access/login", h.Login)
-	p.PUT("/websites/:id/wp-panel-access", h.Save)
-	p.POST("/websites/:id/wp-panel-access/revoke", h.Revoke)
+	p.GET("/websites/:id/wordpress-access", h.Status)
+	p.POST("/websites/:id/wordpress-access/login", h.Login)
+	p.PUT("/websites/:id/wordpress-access", h.Save)
+	p.POST("/websites/:id/wordpress-access/revoke", h.Revoke)
 	old, oldBefore, oldAfter := inspectWPPanelAccess, inspectWPPanelAccessForSettings, inspectWPPanelAccessAfterSettings
 	t.Cleanup(func() {
 		inspectWPPanelAccess = old
@@ -62,16 +62,16 @@ func TestWPPanelAccessLoginReusesAuthenticatedSessionAndRequiresCSRFConsent(t *t
 	// A valid session already represents completed panel authentication,
 	// including MFA when enabled. This request needs neither credential.
 	body := gin.H{"administrator_id": 7, "confirm": true}
-	if response := mfaHandlerCall(t, router, "/api/websites/1/wp-panel-access/login", "", body); response.Code != 401 {
+	if response := mfaHandlerCall(t, router, "/api/websites/1/wordpress-access/login", "", body); response.Code != 401 {
 		t.Fatalf("missing session=%d", response.Code)
 	}
 	revoked := middleware.GlobalSessionStore.Create("admin")
 	middleware.GlobalSessionStore.Delete(revoked.Token)
-	if response := mfaHandlerCall(t, router, "/api/websites/1/wp-panel-access/login", revoked.Token, body); response.Code != 401 {
+	if response := mfaHandlerCall(t, router, "/api/websites/1/wordpress-access/login", revoked.Token, body); response.Code != 401 {
 		t.Fatalf("revoked session=%d", response.Code)
 	}
 	raw, _ := json.Marshal(body)
-	r := httptest.NewRequest(http.MethodPost, "/api/websites/1/wp-panel-access/login", bytes.NewReader(raw))
+	r := httptest.NewRequest(http.MethodPost, "/api/websites/1/wordpress-access/login", bytes.NewReader(raw))
 	r.Header.Set("Content-Type", "application/json")
 	r.AddCookie(&http.Cookie{Name: "wp_session", Value: session.Token})
 	w := httptest.NewRecorder()
@@ -79,7 +79,7 @@ func TestWPPanelAccessLoginReusesAuthenticatedSessionAndRequiresCSRFConsent(t *t
 	if w.Code != 403 {
 		t.Fatalf("missing CSRF=%d", w.Code)
 	}
-	r = httptest.NewRequest(http.MethodPost, "/api/websites/1/wp-panel-access/login", bytes.NewReader(raw))
+	r = httptest.NewRequest(http.MethodPost, "/api/websites/1/wordpress-access/login", bytes.NewReader(raw))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-CSRF-Token", "different-csrf")
 	r.AddCookie(&http.Cookie{Name: "csrf_token", Value: "test-csrf"})
@@ -90,7 +90,7 @@ func TestWPPanelAccessLoginReusesAuthenticatedSessionAndRequiresCSRFConsent(t *t
 		t.Fatalf("mismatched CSRF=%d", w.Code)
 	}
 	for _, invalid := range []gin.H{{"administrator_id": 7, "confirm": false}, {"administrator_id": 7}, {"confirm": true}, {"administrator_id": -1, "confirm": true}} {
-		response := mfaHandlerCall(t, router, "/api/websites/1/wp-panel-access/login", session.Token, invalid)
+		response := mfaHandlerCall(t, router, "/api/websites/1/wordpress-access/login", session.Token, invalid)
 		if response.Code != 400 {
 			t.Fatalf("invalid administrator/consent=%d %s", response.Code, response.Body.String())
 		}
@@ -98,7 +98,7 @@ func TestWPPanelAccessLoginReusesAuthenticatedSessionAndRequiresCSRFConsent(t *t
 	if inspected != 0 {
 		t.Fatal("unverified request reached WordPress")
 	}
-	response := mfaHandlerCall(t, router, "/api/websites/1/wp-panel-access/login", session.Token, body)
+	response := mfaHandlerCall(t, router, "/api/websites/1/wordpress-access/login", session.Token, body)
 	if response.Code != 409 || !strings.Contains(response.Body.String(), "wp_access_not_installed") || strings.Contains(response.Body.String(), `"token"`) {
 		t.Fatalf("uninstalled site authorization=%d %s", response.Code, response.Body.String())
 	}
@@ -117,7 +117,7 @@ func TestWPPanelAccessLoginRequiresExistingPanelAccount(t *testing.T) {
 		t.Fatal("deleted panel account reached WordPress")
 		return executor.WPPanelAccessStatus{}, nil
 	}
-	response := mfaHandlerCall(t, router, "/api/websites/1/wp-panel-access/login", session.Token, gin.H{"administrator_id": 7, "confirm": true})
+	response := mfaHandlerCall(t, router, "/api/websites/1/wordpress-access/login", session.Token, gin.H{"administrator_id": 7, "confirm": true})
 	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), `"token"`) {
 		t.Fatalf("deleted account authorization=%d %s", response.Code, response.Body.String())
 	}
@@ -141,7 +141,7 @@ func TestWPPanelAccessLoginRequiresEnabledAvailableSSOAndKnownAdministrator(t *t
 			inspectWPPanelAccess = func(context.Context, *models.Website) (executor.WPPanelAccessStatus, error) {
 				return test.status, nil
 			}
-			response := mfaHandlerCall(t, router, "/api/websites/1/wp-panel-access/login", session.Token, gin.H{"administrator_id": 7, "confirm": true})
+			response := mfaHandlerCall(t, router, "/api/websites/1/wordpress-access/login", session.Token, gin.H{"administrator_id": 7, "confirm": true})
 			if response.Code != test.response || !strings.Contains(response.Body.String(), "wp_access_"+test.errorCode) || strings.Contains(response.Body.String(), `"token"`) {
 				t.Fatalf("authorization=%d %s", response.Code, response.Body.String())
 			}
@@ -164,7 +164,7 @@ func TestWPPanelAccessSaveStillRequiresPasswordAndMFA(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		r := httptest.NewRequest(http.MethodPut, "/api/websites/1/wp-panel-access", bytes.NewReader(raw))
+		r := httptest.NewRequest(http.MethodPut, "/api/websites/1/wordpress-access", bytes.NewReader(raw))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("X-CSRF-Token", "test-csrf")
 		r.AddCookie(&http.Cookie{Name: "csrf_token", Value: "test-csrf"})
@@ -195,7 +195,7 @@ func TestWPPanelAccessSaveStillRequiresPasswordAndMFA(t *testing.T) {
 	inspectWPPanelAccess = func(context.Context, *models.Website) (executor.WPPanelAccessStatus, error) {
 		return executor.WPPanelAccessStatus{ReasonCode: "not_installed"}, nil
 	}
-	if response := mfaHandlerCall(t, router, "/api/websites/1/wp-panel-access/login", session.Token, gin.H{"administrator_id": 7, "confirm": true}); response.Code != http.StatusConflict {
+	if response := mfaHandlerCall(t, router, "/api/websites/1/wordpress-access/login", session.Token, gin.H{"administrator_id": 7, "confirm": true}); response.Code != http.StatusConflict {
 		t.Fatalf("session login=%d %s", response.Code, response.Body.String())
 	}
 	body := gin.H{"current_password": "correct-password", "code": codes[0], "sso_enabled": true, "confirm": true}
@@ -233,9 +233,9 @@ func TestWPPanelAccessRequestsBoundWholeOperationBeforeEnteringPHP(t *testing.T)
 		body         gin.H
 		status       int
 	}{
-		{http.MethodGet, "/api/websites/1/wp-panel-access", nil, http.StatusOK},
-		{http.MethodPost, "/api/websites/1/wp-panel-access/login", gin.H{"administrator_id": 7, "confirm": true}, http.StatusConflict},
-		{http.MethodPut, "/api/websites/1/wp-panel-access", gin.H{"current_password": "correct-password", "confirm": true}, http.StatusConflict},
+		{http.MethodGet, "/api/websites/1/wordpress-access", nil, http.StatusOK},
+		{http.MethodPost, "/api/websites/1/wordpress-access/login", gin.H{"administrator_id": 7, "confirm": true}, http.StatusConflict},
+		{http.MethodPut, "/api/websites/1/wordpress-access", gin.H{"current_password": "correct-password", "confirm": true}, http.StatusConflict},
 	} {
 		body, _ := json.Marshal(test.body)
 		r := httptest.NewRequest(test.method, test.path, bytes.NewReader(body))
@@ -265,7 +265,7 @@ func TestWPPanelAccessSaveRefusesExternalLoginControlWithoutMutation(t *testing.
 		return nil, nil
 	}
 	raw, _ := json.Marshal(gin.H{"login_suffix": "staff-signin", "sso_enabled": false, "current_password": "correct-password", "confirm": true})
-	r := httptest.NewRequest(http.MethodPut, "/api/websites/1/wp-panel-access", bytes.NewReader(raw))
+	r := httptest.NewRequest(http.MethodPut, "/api/websites/1/wordpress-access", bytes.NewReader(raw))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-CSRF-Token", "test-csrf")
 	r.AddCookie(&http.Cookie{Name: "csrf_token", Value: "test-csrf"})

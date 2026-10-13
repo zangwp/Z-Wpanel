@@ -97,12 +97,12 @@ func TestNewWordPressDefaultFingerprintRejectsSymlinks(t *testing.T) {
 }
 
 func TestNewWordPressDefaultsCleanupRunsOnlyOnInstallAndProtectsUserContent(t *testing.T) {
-	php := os.Getenv("OLS_WP_DEFAULTS_TEST_PHP")
+	php := os.Getenv("YUB_WP_DEFAULTS_TEST_PHP")
 	if php == "" {
 		var err error
 		php, err = exec.LookPath("php")
 		if err != nil {
-			t.Skip("PHP CLI unavailable; set OLS_WP_DEFAULTS_TEST_PHP for filesystem hook tests")
+			t.Skip("PHP CLI unavailable; set YUB_WP_DEFAULTS_TEST_PHP for filesystem hook tests")
 		}
 	}
 	for _, state := range []string{"fresh", "child theme", "existing", "repeat", "modified theme", "additional custom file", "active plugin", "missing active theme", "multisite", "filesystem failure", "uploaded customized package", "legacy unverified package"} {

@@ -60,18 +60,8 @@ failregex = ^<HOST> .* ".*" 429 .*$
 ignoreregex =
 `
 
-// fail2banLoginFilterConfig 承载 wp-login.php 登录失败（200）和被禁用的
-// xmlrpc.php 认证请求（403）两类信号。这两类事件能不能进入 wp-login-security.log，
-// 已经由 Nginx 侧的 $wp_login_attempt_loggable map（基于规范化后的 $uri，而不是
-// 客户端原始 $request 文本）判断完毕，所以这里的 failregex 只做轻量结构校验
-// （POST + 状态码），不再要求路径斜杠数量——防止模板被误改导致这个文件意外
-// 写入无关请求时被 Fail2ban 全部当成攻击，但不会重新引入"单斜杠才算数"的老问题。
-//
-// ignoreregex 是从旧 fail2banFilterConfig 原样搬过来的，用于放行
-// lostpassword/register/logout 等合法 WordPress 核心 action；这段正则专门处理了
-// 重复 action 参数时 WordPress/PHP 取最后一个、而非第一个的语义（已用局域网实测
-// 确认 Nginx 的 $arg_action 取的是第一个，两者不一致，所以这段判断必须留在
-// Fail2ban 侧解析完整 $request 文本，不能挪到 Nginx map 里用 $arg_action 做）。
+// Only the WordPress authentication hook emits this evidence. HTTP 200/403
+// responses, password-reset forms and disabled XML-RPC requests are not failures.
 const fail2banLoginFilterConfig = `# YUB WPanel Generated — DO NOT EDIT MANUALLY
 [Definition]
 datepattern = %%Y-%%m-%%dT%%H:%%M:%%S%%z

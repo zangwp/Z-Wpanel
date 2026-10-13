@@ -19,12 +19,12 @@ import (
 // not emulate server SQL authorization and is not a MariaDB isolation test.
 func databaseImportTestAdmin(sql string) bool {
 	fail := func() { fmt.Fprintln(os.Stderr, "injected identity administration failure"); os.Exit(1) }
-	path := os.Getenv("OLS_IMPORT_TEST_STATE")
+	path := os.Getenv("YUB_IMPORT_TEST_STATE")
 	if path == "" {
-		path = os.Getenv("OLS_BACKUP_TEST_STATE") + ".identity"
+		path = os.Getenv("YUB_BACKUP_TEST_STATE") + ".identity"
 	}
 	if strings.HasPrefix(sql, "SELECT CONCAT(CURRENT_USER()") {
-		if os.Getenv("OLS_IMPORT_TEST_AUTH_FAIL") == "1" {
+		if os.Getenv("YUB_IMPORT_TEST_AUTH_FAIL") == "1" {
 			fail()
 		}
 		user := ""
@@ -37,13 +37,13 @@ func databaseImportTestAdmin(sql string) bool {
 		return true
 	}
 	if strings.HasPrefix(sql, "CREATE USER ") {
-		if os.Getenv("OLS_IMPORT_TEST_CREATE_FAIL") == "1" {
+		if os.Getenv("YUB_IMPORT_TEST_CREATE_FAIL") == "1" {
 			fail()
 		}
 		if err := os.WriteFile(path, nil, 0600); err != nil {
 			fail()
 		}
-		if os.Getenv("OLS_IMPORT_TEST_RECEIPT_FAIL") == "1" {
+		if os.Getenv("YUB_IMPORT_TEST_RECEIPT_FAIL") == "1" {
 			user := strings.Split(sql, "'")[1]
 			identity := databaseImportIdentity{Version: 1, Database: "site_db", User: user}
 			receipt := filepath.Join(filepath.Dir(path), "database-import-identities", databaseImportReceiptName(identity))
@@ -67,13 +67,13 @@ func databaseImportTestAdmin(sql string) bool {
 		grant := strings.TrimSuffix(string(body), ";")
 		account := strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(sql), ";"), "SHOW GRANTS FOR ")
 		fmt.Printf("GRANT USAGE ON *.* TO %s IDENTIFIED BY PASSWORD '*0123456789012345678901234567890123456789'\n%s\n", account, grant)
-		if os.Getenv("OLS_IMPORT_TEST_GRANTS_FAIL") == "1" {
+		if os.Getenv("YUB_IMPORT_TEST_GRANTS_FAIL") == "1" {
 			fmt.Printf("GRANT ALL PRIVILEGES ON *.* TO %s WITH GRANT OPTION\n", account)
 		}
 		return true
 	}
 	if strings.HasPrefix(sql, "SELECT IF(") {
-		if os.Getenv("OLS_IMPORT_TEST_ISOLATION_FAIL") == "1" {
+		if os.Getenv("YUB_IMPORT_TEST_ISOLATION_FAIL") == "1" {
 			fmt.Println("DENIED")
 		} else {
 			fmt.Println("OK")
@@ -90,13 +90,13 @@ func databaseImportTestAdmin(sql string) bool {
 	}
 	if strings.HasPrefix(sql, "ALTER USER ") {
 		_ = os.WriteFile(path+".altered", []byte("yes"), 0600)
-		if strings.Contains(sql, "ACCOUNT LOCK") && os.Getenv("OLS_IMPORT_TEST_LOCK_FAIL") == "1" {
+		if strings.Contains(sql, "ACCOUNT LOCK") && os.Getenv("YUB_IMPORT_TEST_LOCK_FAIL") == "1" {
 			fail()
 		}
 		return true
 	}
 	if strings.HasPrefix(sql, "SELECT COUNT(*) FROM (") && strings.Contains(sql, "DEFINER") {
-		if os.Getenv("OLS_IMPORT_TEST_RETAIN") == "1" {
+		if os.Getenv("YUB_IMPORT_TEST_RETAIN") == "1" {
 			fmt.Println("1")
 		} else {
 			fmt.Println("0")
@@ -111,7 +111,7 @@ func databaseImportTestAdmin(sql string) bool {
 }
 
 func TestDatabaseImportIdentityProcessHelper(t *testing.T) {
-	if os.Getenv("OLS_IMPORT_TEST_HELPER") != "1" {
+	if os.Getenv("YUB_IMPORT_TEST_HELPER") != "1" {
 		return
 	}
 	args := os.Args
@@ -158,10 +158,10 @@ func TestDatabaseImportIdentityProcessHelper(t *testing.T) {
 	if os.Getenv("MYSQL_PWD") == "fixture-admin-password" || os.Getenv("MYSQL_PWD") == "" {
 		os.Exit(3)
 	}
-	if err := os.WriteFile(os.Getenv("OLS_IMPORT_TEST_INPUT"), input, 0600); err != nil {
+	if err := os.WriteFile(os.Getenv("YUB_IMPORT_TEST_INPUT"), input, 0600); err != nil {
 		os.Exit(2)
 	}
-	if os.Getenv("OLS_IMPORT_TEST_IMPORT_FAIL") == "1" {
+	if os.Getenv("YUB_IMPORT_TEST_IMPORT_FAIL") == "1" {
 		fmt.Fprintln(os.Stderr, "injected SQL rejection")
 		os.Exit(1)
 	}
@@ -178,16 +178,16 @@ func setupDatabaseImportIdentityTest(t *testing.T) string {
 	old := config.AppConfig
 	config.AppConfig = &config.Config{Panel: config.PanelConfig{DataDir: root, BackupDir: root}}
 	t.Cleanup(func() { config.AppConfig = old })
-	t.Setenv("OLS_IMPORT_TEST_HELPER", "1")
-	t.Setenv("OLS_IMPORT_TEST_STATE", filepath.Join(root, "helper-state"))
+	t.Setenv("YUB_IMPORT_TEST_HELPER", "1")
+	t.Setenv("YUB_IMPORT_TEST_STATE", filepath.Join(root, "helper-state"))
 	input := filepath.Join(root, "import.sql")
-	t.Setenv("OLS_IMPORT_TEST_INPUT", input)
+	t.Setenv("YUB_IMPORT_TEST_INPUT", input)
 	return input
 }
 
 func TestDatabaseImportIdentityRestrictedProcessAndDefinerRetention(t *testing.T) {
 	input := setupDatabaseImportIdentityTest(t)
-	t.Setenv("OLS_IMPORT_TEST_RETAIN", "1")
+	t.Setenv("YUB_IMPORT_TEST_RETAIN", "1")
 	sql := "CREATE TABLE data (id int);\nUPDATE other_db.secret SET value=1;\nDROP TABLE other_db.secret;\nINSERT INTO other_db.secret VALUES (1);\nGRANT ALL ON *.* TO 'bad'@'localhost';\n\\! touch /tmp/unsafe\nsource /tmp/unsafe.sql\nCREATE DEFINER=`root`@`localhost` VIEW v AS SELECT 1;\n"
 	result := importDatabaseSQL(context.Background(), databaseImportProcessCommand, "mysql", strings.NewReader(sql), "site_db", "fixture-admin-password", filterRestoreSQLBuffered)
 	if !result.Success {
@@ -219,7 +219,7 @@ func TestDatabaseImportIdentitySetupAndLockFailuresFailClosed(t *testing.T) {
 	for _, scenario := range []struct {
 		env      string
 		imported bool
-	}{{"OLS_IMPORT_TEST_CREATE_FAIL", false}, {"OLS_IMPORT_TEST_RECEIPT_FAIL", false}, {"OLS_IMPORT_TEST_GRANTS_FAIL", false}, {"OLS_IMPORT_TEST_ISOLATION_FAIL", false}, {"OLS_IMPORT_TEST_AUTH_FAIL", false}, {"OLS_IMPORT_TEST_LOCK_FAIL", true}, {"OLS_IMPORT_TEST_IMPORT_FAIL", true}} {
+	}{{"YUB_IMPORT_TEST_CREATE_FAIL", false}, {"YUB_IMPORT_TEST_RECEIPT_FAIL", false}, {"YUB_IMPORT_TEST_GRANTS_FAIL", false}, {"YUB_IMPORT_TEST_ISOLATION_FAIL", false}, {"YUB_IMPORT_TEST_AUTH_FAIL", false}, {"YUB_IMPORT_TEST_LOCK_FAIL", true}, {"YUB_IMPORT_TEST_IMPORT_FAIL", true}} {
 		t.Run(scenario.env, func(t *testing.T) {
 			input := setupDatabaseImportIdentityTest(t)
 			t.Setenv(scenario.env, "1")
@@ -231,15 +231,15 @@ func TestDatabaseImportIdentitySetupAndLockFailuresFailClosed(t *testing.T) {
 			if scenario.imported && err != nil || !scenario.imported && !os.IsNotExist(err) {
 				t.Fatalf("imported=%v stat=%v result=%#v", scenario.imported, err, result)
 			}
-			if scenario.env == "OLS_IMPORT_TEST_CREATE_FAIL" {
+			if scenario.env == "YUB_IMPORT_TEST_CREATE_FAIL" {
 				for _, suffix := range []string{".altered", ".dropped"} {
-					if _, err := os.Stat(os.Getenv("OLS_IMPORT_TEST_STATE") + suffix); !os.IsNotExist(err) {
+					if _, err := os.Stat(os.Getenv("YUB_IMPORT_TEST_STATE") + suffix); !os.IsNotExist(err) {
 						t.Fatalf("unknown colliding identity was mutated: %v", err)
 					}
 				}
 			}
-			if scenario.env == "OLS_IMPORT_TEST_RECEIPT_FAIL" {
-				if _, err := os.Stat(os.Getenv("OLS_IMPORT_TEST_STATE") + ".dropped"); err != nil {
+			if scenario.env == "YUB_IMPORT_TEST_RECEIPT_FAIL" {
+				if _, err := os.Stat(os.Getenv("YUB_IMPORT_TEST_STATE") + ".dropped"); err != nil {
 					t.Fatal("newly created identity was not cleaned after receipt failure")
 				}
 			}
@@ -258,7 +258,7 @@ func TestDatabaseImportCleanupRequiresReceiptAndPreservesReferencedDefiners(t *t
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, databaseImportReceiptName(identity))
-	t.Setenv("OLS_IMPORT_TEST_RETAIN", "1")
+	t.Setenv("YUB_IMPORT_TEST_RETAIN", "1")
 	if err := finishDatabaseImportIdentity(databaseImportProcessCommand, "mysql", "fixture-admin-password", identity); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestDatabaseImportCleanupRequiresReceiptAndPreservesReferencedDefiners(t *t
 	if err := cleanupDatabaseImportIdentities(databaseImportProcessCommand, "mysql", "site_db", "fixture-admin-password", true); err == nil {
 		t.Fatal("deleted schema cleanup ignored unexpected external definer")
 	}
-	t.Setenv("OLS_IMPORT_TEST_RETAIN", "0")
+	t.Setenv("YUB_IMPORT_TEST_RETAIN", "0")
 	if err := cleanupDatabaseImportIdentities(databaseImportProcessCommand, "mysql", "site_db", "fixture-admin-password", true); err != nil {
 		t.Fatal(err)
 	}
@@ -278,11 +278,11 @@ func TestDatabaseImportCleanupRequiresReceiptAndPreservesReferencedDefiners(t *t
 	if err := os.WriteFile(path, []byte(`{"version":1,"database":"site_db","user":"root"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_ = os.Remove(os.Getenv("OLS_IMPORT_TEST_STATE") + ".dropped")
+	_ = os.Remove(os.Getenv("YUB_IMPORT_TEST_STATE") + ".dropped")
 	if err := cleanupDatabaseImportIdentities(databaseImportProcessCommand, "mysql", "site_db", "fixture-admin-password", true); err == nil {
 		t.Fatal("invalid ownership receipt allowed cleanup")
 	}
-	if _, err := os.Stat(os.Getenv("OLS_IMPORT_TEST_STATE") + ".dropped"); !os.IsNotExist(err) {
+	if _, err := os.Stat(os.Getenv("YUB_IMPORT_TEST_STATE") + ".dropped"); !os.IsNotExist(err) {
 		t.Fatal("invalid ownership receipt caused an administrative DROP USER")
 	}
 }
@@ -306,11 +306,11 @@ func TestWPCoreDatabaseRestoreUsesIsolatedImporterAndClearsAllObjects(t *testing
 	old := wpCoreRestoreCommand
 	wpCoreRestoreCommand = databaseImportProcessCommand
 	t.Cleanup(func() { wpCoreRestoreCommand = old })
-	t.Setenv("OLS_IMPORT_TEST_RETAIN", "1")
+	t.Setenv("YUB_IMPORT_TEST_RETAIN", "1")
 	if err := restoreWPCoreDatabase(context.Background(), filepath.Join(root, "mysql"), "site_db", "fixture-admin-password", backup); err != nil {
 		t.Fatal(err)
 	}
-	cleared, err := os.ReadFile(os.Getenv("OLS_IMPORT_TEST_STATE") + ".cleared")
+	cleared, err := os.ReadFile(os.Getenv("YUB_IMPORT_TEST_STATE") + ".cleared")
 	if err != nil {
 		t.Fatal(err)
 	}

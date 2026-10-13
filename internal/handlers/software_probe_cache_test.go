@@ -136,7 +136,7 @@ func TestSoftwareReadWorkersAreBoundedAndCallerCanCancel(t *testing.T) {
 }
 
 func TestSoftwareReadProcessHelper(t *testing.T) {
-	if os.Getenv("OLS_SOFTWARE_READ_HELPER") != "1" {
+	if os.Getenv("YUB_SOFTWARE_READ_HELPER") != "1" {
 		return
 	}
 	_, _ = os.Stdout.WriteString("partial version")
@@ -145,7 +145,7 @@ func TestSoftwareReadProcessHelper(t *testing.T) {
 }
 
 func TestSoftwareReadCommandCancelsActualChildProcess(t *testing.T) {
-	t.Setenv("OLS_SOFTWARE_READ_HELPER", "1")
+	t.Setenv("YUB_SOFTWARE_READ_HELPER", "1")
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	started := time.Now()

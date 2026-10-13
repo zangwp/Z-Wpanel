@@ -98,7 +98,7 @@ func TestClassifyServiceFailure(t *testing.T) {
 }
 
 func TestCoreGuardServices(t *testing.T) {
-	for _, service := range []string{"nginx", "php8.3-fpm", "mariadb", "redis-server"} {
+	for _, service := range []string{"nginx", PHPFPMService(), "mariadb", "redis-server"} {
 		if !isCoreGuardService(service) {
 			t.Fatalf("%s should be a core service", service)
 		}
@@ -172,7 +172,7 @@ func TestProcessGuardReadsStateAfterAcquiringLock(t *testing.T) {
 
 	pg := &ProcessGuard{firstRun: true}
 	service := &GuardService{Name: "MariaDB", ServiceName: "mariadb"}
-	pg.mu.Lock()
+	pg.opMu.Lock()
 	done := make(chan struct{})
 	go func() {
 		pg.check(service)
@@ -181,11 +181,11 @@ func TestProcessGuardReadsStateAfterAcquiringLock(t *testing.T) {
 
 	select {
 	case <-called:
-		pg.mu.Unlock()
+		pg.opMu.Unlock()
 		t.Fatal("service state was read before acquiring the process guard lock")
 	case <-time.After(30 * time.Millisecond):
 	}
-	pg.mu.Unlock()
+	pg.opMu.Unlock()
 
 	select {
 	case <-done:

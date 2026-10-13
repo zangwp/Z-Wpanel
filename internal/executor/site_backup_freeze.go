@@ -41,6 +41,8 @@ type siteBackupReadLocker interface {
 	Close() error
 }
 
+const siteBackupMarkerHeader = "X-YUB-WPanel-Backup"
+
 // Explicit operating-system/runtime boundaries are replaceable in unit tests;
 // production uses the real Nginx/PHP-FPM, MariaDB and Linux implementations below.
 var (
@@ -165,7 +167,7 @@ func renderSiteBackupMaintenance(site *models.Website, root, marker string) (str
 	}
 	block := func(listen, tls string) string {
 		return "server {\n" + listen + " server_name " + strings.Join(domains, " ") + ";\n" + tls +
-			" root " + root + ";\n add_header Cache-Control \"no-store\" always;\n add_header X-YUB-WPanel-Backup \"" + marker + "\" always;\n location / { return 503; }\n}\n"
+			" root " + root + ";\n add_header Cache-Control \"no-store\" always;\n add_header " + siteBackupMarkerHeader + " \"" + marker + "\" always;\n location / { return 503; }\n}\n"
 	}
 	content := "# YUB WPanel backup maintenance: " + marker + "\n" + block(" listen 80;\n listen [::]:80;\n", "")
 	if site.SSLEnabled {
@@ -221,7 +223,7 @@ func verifySiteBackupMaintenance(ctx context.Context, site *models.Website, mark
 					}
 					_, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 					resp.Body.Close()
-					marked := resp.Header.Get("X-Z-Wpanel-Backup") == marker
+					marked := resp.Header.Get(siteBackupMarkerHeader) == marker
 					if readErr != nil || (maintenance && (resp.StatusCode != 503 || !marked || !strings.Contains(resp.Header.Get("Cache-Control"), "no-store"))) || (!maintenance && marked) {
 						transport.CloseIdleConnections()
 						return errors.New("网站未通过真实 503 停写/解除维护核验")

@@ -23,7 +23,7 @@ RewriteRule . /index.php [L]
 `
 
 // prepareNewWordPressRewrite is called only by the new-site deployment wrapper,
-// before its first OLS configuration load. O_EXCL preserves package-supplied
+// before its first server configuration load. O_EXCL preserves package-supplied
 // and other existing rules, including empty files. It never edits a live site
 // or intercepts user/plugin rewrite rules in the generated vhost.
 func prepareNewWordPressRewrite(webRoot string) (err error) {

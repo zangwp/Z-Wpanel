@@ -110,7 +110,7 @@ func (f *siteBackupFreeze) disableFPM(ctx context.Context) error {
 	f.manifest.OriginalPHPPool = string(original)
 	f.manifest.PHPPoolSHA256 = hex.EncodeToString(sum[:])
 	f.manifest.FPMDisabled = true
-	if err = f.save("fpm_disable_intent"); err != nil {
+	if err = f.save(f.manifest.Phase); err != nil {
 		return err
 	}
 	if err = writeSiteBackupNginxAtomic(path, []byte(f.fpmMaintenance()), 0644); err != nil {
@@ -154,7 +154,11 @@ func (f *siteBackupFreeze) restoreFPM(ctx context.Context) error {
 		return err
 	}
 	f.manifest.FPMDisabled = false
-	return f.save("fpm_restored")
+	if err = f.save(f.manifest.Phase); err != nil {
+		f.manifest.FPMDisabled = true
+		return err
+	}
+	return nil
 }
 func reloadSiteBackupFPM(ctx context.Context) error {
 	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)

@@ -173,7 +173,7 @@ test('leaving overview or destroying the page closes pending authorization and r
         if (action==='navigate') { component.detailTab='logs';watchers.get('detailTab')('logs'); } else component.destroy();
         assert.equal(popup.closed,true);assert.equal(component.loginOpen,false);
         pending.resolve({success:true,data:{action_url:'https://site.example/index.php',token:'A'.repeat(43),generation:'b'.repeat(32),expires_at:new Date(Date.now()+60000).toISOString()}});await login;
-        assert.equal(forms.length,0);assert.equal(calls.at(-1).url,'/websites/1/wp-panel-access/revoke');assert.equal(component.error,'');assert.equal(component.busy,false);
+        assert.equal(forms.length,0);assert.equal(calls.at(-1).url,'/websites/1/wordpress-access/revoke');assert.equal(component.error,'');assert.equal(component.busy,false);
     }
 });
 

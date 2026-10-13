@@ -52,7 +52,7 @@ type settingsUpdateRequest struct {
 	WPPackageAutoCheckEnabled *string `json:"wp_package_auto_check_enabled"`
 }
 
-const defaultPanelConfigPath = "/www/yub-wpanel/config.json"
+const defaultPanelConfigPath = "/www/server/panel/config.json"
 
 func (h *SettingsHandler) configPath() string {
 	if strings.TrimSpace(h.ConfigPath) != "" {

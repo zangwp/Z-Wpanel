@@ -26,7 +26,7 @@ func TestWPPanelAccessLoginRouteRefusesRedirectsMissingProofAndCancellation(t *t
 			if r.Method != "GET" || r.URL.String() != "https://example.com/wp/staff-signin" {
 				t.Fatal("route proof submitted credentials or changed its target")
 			}
-			return &http.Response{StatusCode: test.status, Header: http.Header{"X-Ols-Wpanel-Login-Route": []string{test.marker}, "Location": []string{"https://evil.test/"}}, Body: io.NopCloser(strings.NewReader("login page")), Request: r}, nil
+			return &http.Response{StatusCode: test.status, Header: http.Header{"X-Z-Wpanel-Login-Route": []string{test.marker}, "Location": []string{"https://evil.test/"}}, Body: io.NopCloser(strings.NewReader("login page")), Request: r}, nil
 		})}
 		err := verifyWPPanelAccessLoginRouteWithClient(context.Background(), client, "https://example.com/wp/staff-signin", generation)
 		if (err == nil) != test.valid || calls != 1 {

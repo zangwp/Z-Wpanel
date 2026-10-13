@@ -86,7 +86,7 @@ function wordpressPanelAccess() {
             const controller = new AbortController(); this.readController = controller;
             this.loading = true; this.error = '';
             try {
-                const response = await api('/websites/' + siteID + '/wp-panel-access', {silent:true,cache:'no-store',timeout:20000,signal:controller.signal});
+                const response = await api('/websites/' + siteID + '/wordpress-access', {silent:true,cache:'no-store',timeout:20000,signal:controller.signal});
                 if (!response.success || !response.data || typeof response.data.installed !== 'boolean') throw new Error(t('wp_access.reason_unavailable'));
                 if (generation !== this.generation || this.site?.id !== siteID) return;
                 this.status = response.data;
@@ -104,7 +104,7 @@ function wordpressPanelAccess() {
             if (this.busy || this.loading || !this.settingsPassword || this.site?.file_lock_enabled) return;
             this.busy = true; this.error = '';
             try {
-                const response = await api('/websites/' + this.site.id + '/wp-panel-access', {method:'PUT',body:{manual_login_url:'',login_suffix:this.suffix.trim(),sso_enabled:this.enableSSO,current_password:this.settingsPassword,code:this.settingsCode,confirm:true},silent:true,allowAuthFailure:true,timeout:30000});
+                const response = await api('/websites/' + this.site.id + '/wordpress-access', {method:'PUT',body:{manual_login_url:'',login_suffix:this.suffix.trim(),sso_enabled:this.enableSSO,current_password:this.settingsPassword,code:this.settingsCode,confirm:true},silent:true,allowAuthFailure:true,timeout:30000});
                 if (!response.success) throw new Error(t('common.operation_failed'));
                 this.settingsOpen = false; this.closeLogin(); showToast(t('settings.saved'), 'success');
             } catch (error) { this.error = this.errorText(error); }
@@ -114,7 +114,7 @@ function wordpressPanelAccess() {
         async revoke() {
             if (this.busy || this.loading) return;
             this.busy = true; this.error = '';
-            try { await api('/websites/' + this.site.id + '/wp-panel-access/revoke', {method:'POST',body:{},silent:true}); this.closeLogin(); showToast(t('wp_access.revoked'), 'success'); }
+            try { await api('/websites/' + this.site.id + '/wordpress-access/revoke', {method:'POST',body:{},silent:true}); this.closeLogin(); showToast(t('wp_access.revoked'), 'success'); }
             catch (error) { this.error = this.errorText(error); }
             finally { this.busy = false; }
         },
@@ -128,7 +128,7 @@ function wordpressPanelAccess() {
             this.loginPopup = popup;
             this.busy = true; this.error = '';
             try {
-                const response = await api('/websites/' + siteID + '/wp-panel-access/login', {method:'POST',body:{administrator_id:Number(this.administratorID),confirm:true},silent:true,timeout:30000});
+                const response = await api('/websites/' + siteID + '/wordpress-access/login', {method:'POST',body:{administrator_id:Number(this.administratorID),confirm:true},silent:true,timeout:30000});
                 if (!current()) throw new Error('authorization_cancelled');
                 const ticket = response.data, action = this.safeAddress(ticket?.action_url), expires = Date.parse(ticket?.expires_at);
                 const expectedPath = (this.status.installation_path || '/').replace(/\/$/, '') + '/index.php';
@@ -141,7 +141,7 @@ function wordpressPanelAccess() {
                 this.loginOpen = false; this.loginPopup = null;
             } catch (error) {
                 popup.close(); if (current()) this.error = this.errorText(error);
-                try { await api('/websites/' + siteID + '/wp-panel-access/revoke', {method:'POST',body:{},silent:true}); } catch (_) {}
+                try { await api('/websites/' + siteID + '/wordpress-access/revoke', {method:'POST',body:{},silent:true}); } catch (_) {}
             } finally { this.loginPopup = null; this.busy = false; }
         },
         destroy() { this.destroyed = true; this.cancelRead(); this.closeLogin(); this.settingsPassword = ''; this.settingsCode = ''; },

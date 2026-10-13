@@ -393,7 +393,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 	if e = os.WriteFile(filepath.Join(dir, "rollback.sh"), []byte(rollback), 0700); e != nil {
 		return SSHPortChange{}, e
 	}
-	verify := "#!/bin/sh\nset -eu\numask 077\n[ \"$(id -u)\" = 0 ] || exit 1\n[ \"${1-}\" = " + shellLiteral(token) + " ] || exit 1\nset -- ${OLS_SSH_CONNECTION-}\n[ \"${4-}\" = " + shellLiteral(strconv.Itoa(newPort)) + " ] || { echo 'Please run this command in the NEW SSH connection'; exit 1; }\n[ -f " + shellLiteral(filepath.Join(dir, "pending")) + " ] || exit 1\nprintf '%s' " + shellLiteral(token) + " > " + shellLiteral(filepath.Join(dir, "verified")) + "\necho 'New SSH port verified. Return to the panel to save.'\n"
+	verify := "#!/bin/sh\nset -eu\numask 077\n[ \"$(id -u)\" = 0 ] || exit 1\n[ \"${1-}\" = " + shellLiteral(token) + " ] || exit 1\nset -- ${YUB_SSH_CONNECTION-}\n[ \"${4-}\" = " + shellLiteral(strconv.Itoa(newPort)) + " ] || { echo 'Please run this command in the NEW SSH connection'; exit 1; }\n[ -f " + shellLiteral(filepath.Join(dir, "pending")) + " ] || exit 1\nprintf '%s' " + shellLiteral(token) + " > " + shellLiteral(filepath.Join(dir, "verified")) + "\necho 'New SSH port verified. Return to the panel to save.'\n"
 	if e = os.WriteFile(filepath.Join(dir, "verify.sh"), []byte(verify), 0700); e != nil {
 		return SSHPortChange{}, e
 	}
@@ -437,7 +437,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 	if e = waitSSHListener(ctx, newPort); e != nil {
 		return failed(e)
 	}
-	sshMove.SSHPortChange = SSHPortChange{Token: token, OldPort: s.Port, NewPort: newPort, Deadline: started.Add(240 * time.Second), VerifyCommand: "sudo env OLS_SSH_CONNECTION=\"$SSH_CONNECTION\" /bin/sh " + shellLiteral(filepath.Join(dir, "verify.sh")) + " " + shellLiteral(token)}
+	sshMove.SSHPortChange = SSHPortChange{Token: token, OldPort: s.Port, NewPort: newPort, Deadline: started.Add(240 * time.Second), VerifyCommand: "env YUB_SSH_CONNECTION=\"$SSH_CONNECTION\" /bin/sh " + shellLiteral(filepath.Join(dir, "verify.sh")) + " " + shellLiteral(token)}
 	sshMove.dir = dir
 	sshMove.service = s.Service
 	sshMove.expectedConfig = dual

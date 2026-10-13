@@ -111,12 +111,12 @@ func TestSiteBackupStaticMaintenanceHasAllRegisteredHostsAndNoLivePHP(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"example.com,www.example.com,shop.example.com", "type NULL", "Cache-Control: no-store", "X-Z-Wpanel-Backup:", "[R=503,L]", "autoLoadHtaccess 0"} {
+	for _, want := range []string{"server_name example.com www.example.com shop.example.com;", "add_header Cache-Control \"no-store\" always;", "add_header " + siteBackupMarkerHeader, "location / { return 503; }"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q", want)
 		}
 	}
-	for _, bad := range []string{"scripthandler", "extprocessor", "module cache", "errorpage 503", "*.example.com"} {
+	for _, bad := range []string{"fastcgi_pass", "proxy_pass", "include ", "*.example.com"} {
 		if strings.Contains(text, bad) {
 			t.Fatalf("unsafe inherited setting %q", bad)
 		}
@@ -319,6 +319,11 @@ func siteBackupPairedFixture(t *testing.T) (*siteBackupFreeze, *models.SiteBacku
 	site.SystemUser = "wp_site"
 	site.TablePrefix = "wp_"
 	site.Status = models.StatusBackupMaintenance
+	config.AppConfig.Paths.PHPFPMPool = t.TempDir()
+	site.PHPPoolPath = filepath.Join(config.AppConfig.Paths.PHPFPMPool, "wp_site.conf")
+	if err := os.WriteFile(site.PHPPoolPath, []byte("[wp_site]\nuser = wp_site\nlisten = /run/php/wp_site.sock\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	configText := `<?php define('DB_NAME','site_db'); define('DB_USER','site_user'); define('DB_HOST','localhost'); $table_prefix = 'wp_';`
 	if err := os.WriteFile(filepath.Join(site.WebRoot, "wp-config.php"), []byte(configText), 0644); err != nil {
 		t.Fatal(err)
@@ -330,8 +335,8 @@ func siteBackupPairedFixture(t *testing.T) (*siteBackupFreeze, *models.SiteBacku
 	oldDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = oldDB; db.Close() })
-	_, err = db.Exec(`CREATE TABLE websites(id INTEGER PRIMARY KEY,domain TEXT,aliases TEXT,web_root TEXT,system_user TEXT,site_type TEXT,status TEXT,file_lock_enabled INTEGER,file_lock_mode TEXT,file_lock_apply_status TEXT,document_root_subdir TEXT,db_name TEXT,db_user TEXT,table_prefix TEXT,nginx_conf_path TEXT,ssl_enabled INTEGER,ssl_cert_path TEXT,ssl_key_path TEXT,updated_at TEXT);
-INSERT INTO websites VALUES(1,'example.com','www.example.com',?, 'wp_site','wordpress','backup_maintenance',0,'','','','site_db','site_user','wp_','',0,'','','old')`, site.WebRoot)
+	_, err = db.Exec(`CREATE TABLE websites(id INTEGER PRIMARY KEY,domain TEXT,aliases TEXT,web_root TEXT,system_user TEXT,site_type TEXT,status TEXT,file_lock_enabled INTEGER,file_lock_mode TEXT,file_lock_apply_status TEXT,document_root_subdir TEXT,db_name TEXT,db_user TEXT,table_prefix TEXT,nginx_conf_path TEXT,ssl_enabled INTEGER,ssl_cert_path TEXT,ssl_key_path TEXT,updated_at TEXT,php_pool_path TEXT);
+INSERT INTO websites VALUES(1,'example.com','www.example.com',?, 'wp_site','wordpress','backup_maintenance',0,'','','','site_db','site_user','wp_','',0,'','','old',?)`, site.WebRoot, site.PHPPoolPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +559,7 @@ func TestSiteBackupFailedPhasePersistenceNeverPublishesSafePhase(t *testing.T) {
 }
 
 func TestSiteBackupThawReLockIntentSurvivesPreLockFailureAndCanceledRequest(t *testing.T) {
-	for _, stage := range []string{"OLS restart failure", "request canceled after restoring access"} {
+	for _, stage := range []string{"Nginx reload failure", "request canceled after restoring access"} {
 		t.Run(stage, func(t *testing.T) {
 			f, _, _ := siteBackupPairedFixture(t)
 			f.manifest.Phase = "freeze_failed"
@@ -577,7 +582,10 @@ func TestSiteBackupThawReLockIntentSurvivesPreLockFailureAndCanceledRequest(t *t
 				t.Fatal(err)
 			}
 			oldSQL, oldRestart, oldWrite, oldTraffic, oldStop := siteBackupSQL, siteBackupReloadNginx, siteBackupWriteVHost, siteBackupVerifyTraffic, siteBackupStopUser
+			oldFPM := siteBackupReloadFPM
+			siteBackupReloadFPM = func(context.Context) error { return nil }
 			defer func() {
+				siteBackupReloadFPM = oldFPM
 				siteBackupSQL, siteBackupReloadNginx, siteBackupWriteVHost, siteBackupVerifyTraffic, siteBackupStopUser = oldSQL, oldRestart, oldWrite, oldTraffic, oldStop
 			}()
 			locked := false
@@ -614,7 +622,7 @@ func TestSiteBackupThawReLockIntentSurvivesPreLockFailureAndCanceledRequest(t *t
 			siteBackupWriteVHost = func(path string, data []byte, mode os.FileMode) error { return os.WriteFile(path, data, mode) }
 			siteBackupReloadNginx = func() (string, error) {
 				restarts++
-				if restarts == 1 && stage == "OLS restart failure" {
+				if restarts == 1 && stage == "Nginx reload failure" {
 					return "", errors.New("restart failed")
 				}
 				return "", nil

@@ -72,7 +72,7 @@ func TestDatabaseManualBackupReleasesOwnOperationOnSuccessAndFailure(t *testing.
 		t.Run(map[bool]string{false: "success", true: "failed_dump"}[fail], func(t *testing.T) {
 			payload, calls := setupDatabaseBackupOperationTest(t)
 			if fail {
-				t.Setenv("OLS_BACKUP_TEST_DUMP_FAIL", "1")
+				t.Setenv("YUB_BACKUP_TEST_DUMP_FAIL", "1")
 			}
 			result := executeCreateBackup(&Task{Payload: payload})
 			if result.Success == fail || *calls != 1 || SiteOpLocked(payload.Site.ID) {

@@ -49,14 +49,14 @@ function observedController() {
   ctx.friendlyAPIError = error => error.message;
   {
     const {context,timers,seen}=cancellationHarness(),caller=observedController();
-    const pending=context.api('/websites/1/wp-panel-access',{signal:caller.controller.signal,silent:true});
+    const pending=context.api('/websites/1/wordpress-access',{signal:caller.controller.signal,silent:true});
     assert.equal(seen.request.signal,caller.controller.signal,'without a timeout the fetch must receive the caller signal directly');
     caller.controller.abort();await assert.rejects(pending,error=>error.name==='AbortError');
     assert.equal(timers.size,0);assert.deepEqual(seen.toasts,[]);assert.equal(context.window.location.href,'');
   }
   {
     const {context,timers,seen}=cancellationHarness(),caller=observedController();
-    const pending=context.api('/websites/1/wp-panel-access',{signal:caller.controller.signal,timeout:20000,silent:true});
+    const pending=context.api('/websites/1/wordpress-access',{signal:caller.controller.signal,timeout:20000,silent:true});
     assert.notEqual(seen.request.signal,caller.controller.signal,'timeout and caller cancellation need one combined signal');
     const lateTimeout=[...timers.values()][0];caller.controller.abort();lateTimeout();
     await assert.rejects(pending,error=>error.name==='AbortError'&&error.message!=='common.request_timeout');
@@ -64,14 +64,14 @@ function observedController() {
   }
   {
     const {context,timers,seen}=cancellationHarness(),caller=observedController();
-    const pending=context.api('/websites/1/wp-panel-access',{signal:caller.controller.signal,timeout:20000,silent:true});
+    const pending=context.api('/websites/1/wordpress-access',{signal:caller.controller.signal,timeout:20000,silent:true});
     [...timers.values()][0]();await assert.rejects(pending,error=>error.message==='common.request_timeout');
     assert.equal(seen.request.signal.aborted,true);assert.equal(caller.controller.signal.aborted,false,'API timeout must not cancel the caller controller');
     assert.equal(timers.size,0);assert.equal(caller.seen.removed,1);
   }
   {
     const {context,timers}=cancellationHarness(),caller=observedController();caller.controller.abort();
-    await assert.rejects(context.api('/websites/1/wp-panel-access',{signal:caller.controller.signal,timeout:20000,silent:true}),error=>error.name==='AbortError');
+    await assert.rejects(context.api('/websites/1/wordpress-access',{signal:caller.controller.signal,timeout:20000,silent:true}),error=>error.name==='AbortError');
     assert.equal(timers.size,0,'pre-cancelled requests must not start a timeout');assert.equal(caller.seen.added,0);
   }
   console.log('PASS API: step-up/session/typed errors preserved; external cancellation and timeouts combine and clean up without misclassifying cancelled navigation');

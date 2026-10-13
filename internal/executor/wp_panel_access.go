@@ -163,7 +163,7 @@ func wpPanelAccessConfigPath(site *models.Website, create bool) (string, error) 
 	if cfg == nil || !filepath.IsAbs(cfg.Panel.DataDir) || site == nil || site.ID <= 0 {
 		return "", wpPanelAccessError("settings_unavailable")
 	}
-	dir := filepath.Join(cfg.Panel.DataDir, "wp-panel-access")
+	dir := filepath.Join(cfg.Panel.DataDir, "wordpress-access")
 	if create {
 		if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
 			return "", err
