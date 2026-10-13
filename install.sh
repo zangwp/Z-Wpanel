@@ -1432,7 +1432,7 @@ install_base_dependencies() {
 
 install_runtime_dependencies() {
     apt-get install -y --no-install-recommends \
-        iproute2 nginx mariadb-server redis-server fail2ban python3-pyinotify \
+        iproute2 nginx mariadb-server redis-server fail2ban python3-pyinotify python3-systemd \
         nftables sshpass openssh-client rsync rsyslog logrotate cron \
         jpegoptim optipng \
         php${PHP_SERIES}-fpm php${PHP_SERIES}-cli php${PHP_SERIES}-mysql \

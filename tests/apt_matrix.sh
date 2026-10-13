@@ -42,7 +42,7 @@ configure_mariadb_repository
 configure_redis_repository
 install_runtime_dependencies
 for command in gpg python3 rsync ssh sshpass logrotate jpegoptim optipng; do command -v "$command" >/dev/null; done
-python3 -c 'import pyinotify'
+python3 -c 'import pyinotify; import systemd.journal'
 "php${PHP_SERIES}" -m > "$INSTALL_WORKDIR/php-modules"
 for module in curl dom exif fileinfo gd intl mbstring mysqli openssl pdo_mysql redis SimpleXML xml xmlreader xmlwriter zip "Zend OPcache"; do
     grep -Fxq "$module" "$INSTALL_WORKDIR/php-modules"

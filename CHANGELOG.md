@@ -4,7 +4,7 @@
 
 - Fix login token refresh before a panel session exists while retaining the random entry path, browser authentication and CSRF checks.
 - Install required packages without optional APT recommendations; replace the full GnuPG toolset and unused distribution helper with the required GPG executable.
-- Explicitly retain PHP modules, remote backup tools, log rotation and Fail2ban file monitoring. Share the installer dependency list with distribution checks.
+- Explicitly retain PHP modules, remote backup tools, log rotation and Fail2ban file/journal monitoring. Share the installer dependency list with distribution checks.
 - Preserve installed packages, credentials and configuration during repair updates.
 
 ## v2.4.0 — 2026-10-13
