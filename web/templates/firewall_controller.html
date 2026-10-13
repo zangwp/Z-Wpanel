@@ -3,6 +3,7 @@
 function firewallManager(initialTab = 'current') {
     return {
         activeTab: 'current',
+        portView: 'policy',
         bans: [],
         banAnomalies: [],
         currentBanReadStatus: null,
@@ -33,7 +34,7 @@ function firewallManager(initialTab = 'current') {
         page: 1,
         totalPages: 1,
         total: 0,
-        portStatus: { backend: '', writable: false, warning: '', input_policy: '', ssh_port: 22, panel_port: 8443, current_management_ip: '', managed_rule_count: 0, anomaly_count: 0, listener_count: 0, network_listener_count: 0, local_listener_count: 0, dangerous_listener_count: 0, listeners: [], rules: [] },
+        portStatus: { backend: '', writable: false, warning: '', input_policy: '', ssh_port: 22, panel_port: 0, current_management_ip: '', managed_rule_count: 0, anomaly_count: 0, listener_count: 0, network_listener_count: 0, local_listener_count: 0, dangerous_listener_count: 0, listeners: [], rules: [] },
         portForm: { protocol: 'tcp', port: null, source: '', source_mode: 'current', description: '', duration_mode: 'permanent', duration_minutes: 60, confirm_public: false },
         selectedPortPreset: '',
         portPresets: [
@@ -41,7 +42,7 @@ function firewallManager(initialTab = 'current') {
             { key: 'http', label: 'HTTP', protocol: 'tcp', fallback: 80, sourceMode: 'any', description: 'HTTP' },
             { key: 'https', label: 'HTTPS', protocol: 'tcp', fallback: 443, sourceMode: 'any', description: 'HTTPS' },
             { key: 'http3', label: 'HTTP/3', protocol: 'udp', fallback: 443, sourceMode: 'any', description: 'HTTP/3 QUIC' },
-            { key: 'panel', label: 'YUB WPanel', protocol: 'tcp', portKey: 'panel_port', fallback: 8443, sourceMode: 'current', description: 'YUB WPanel' },
+            { key: 'panel', label: 'YUB WPanel', protocol: 'tcp', portKey: 'panel_port', sourceMode: 'current', description: 'YUB WPanel' },
         ],
         portsLoaded: false,
         portsLoading: false,
@@ -51,41 +52,71 @@ function firewallManager(initialTab = 'current') {
         accessPreview: null,
         accessBusy: false,
         accessToken: '',
+        accessChangeID: '',
         accessTimer: null,
+        accessExpiryTimer: null,
         accessDeadline: '',
+        accessExpired: false,
+        accessRollbackReady: false,
         accessChecked: false,
+        accessSSHValidation: false,
         accessDirty: false,
         accessError: '',
         markAccessDirty() { this.accessDirty = true; this.accessPreview = null; this.accessError = ''; },
         async refreshAccess() {
-            if (this.accessToken || this.accessBusy) return;
+            if (this.accessToken || this.accessBusy || this.portSubmitting) return;
             if (this.accessDirty && !await confirmModal(t('firewall.access_discard'))) return;
-            await this.fetchPortStatus();
+            if (this.accessToken || this.accessBusy || this.portSubmitting) return;
+            await this.fetchPortStatus({ resetDraft: true });
         },
         accessCustomPort: '',
         accessCustomProtocol: 'tcp',
         addAccessRow() {
+            if (this.accessBusy || this.accessToken || this.portSubmitting || this.portsLoading || this.portStatus.access_available === false) return;
             const port = Number(this.accessCustomPort), protocol = this.accessCustomProtocol, key = protocol + ':' + port;
-            if (!Number.isInteger(port) || port < 1 || port > 65535) { this.accessError = t('firewall.access_invalid_port'); return; }
+            if (!['tcp', 'udp'].includes(protocol) || !Number.isInteger(port) || port < 1 || port > 65535) { this.accessError = t('firewall.access_invalid_port'); return; }
             if (this.accessRows.some(r => r.key === key)) { this.accessError = t('firewall.access_duplicate_port'); return; }
-            this.accessRows.push({ key, protocol, port, label: '', scope: this.accessSensitive({port}) ? 'closed' : 'public', sources: '', listening: false });
+            this.accessRows.push({ key, protocol, port, label: '', scope: this.accessSensitive({port}) ? 'closed' : 'public', sources: '', listening: false, custom: true, fixed: false, detected: false, legacy: false });
             this.accessCustomPort = ''; this.markAccessDirty();
+        },
+        canRemoveAccessRow(row) {
+            if (this.accessBusy || this.accessToken || this.portSubmitting || this.portsLoading || this.portStatus?.access_available !== true || !row || !['tcp', 'udp'].includes(row.protocol) || !Number.isInteger(row.port) || row.port < 1 || row.port > 65535 || row.key !== row.protocol + ':' + row.port) return false;
+            const current = this.accessRows.find(candidate => candidate.key === row.key);
+            if (!current?.custom || current.fixed || current.protocol !== row.protocol || current.port !== row.port) return false;
+            const fixedPorts = ['tcp:' + (this.portStatus.ssh_port || 22), 'tcp:' + this.portStatus.panel_port, 'tcp:80', 'tcp:443', 'udp:443', 'tcp:3306', 'tcp:6379', 'tcp:7080'];
+            if (fixedPorts.includes(row.key)) return false;
+            return true;
+        },
+        removeAccessRow(row) {
+            if (!this.canRemoveAccessRow(row)) return;
+            this.accessRows.splice(this.accessRows.findIndex(candidate => candidate.key === row.key), 1);
+            this.markAccessDirty();
         },
         resetAccessRows() {
             const s = this.portStatus, rows = new Map();
-            const add = (protocol, port, label = '') => {
+            const panelPort = Number(s.panel_port);
+            const panelPortKnown = Number.isInteger(panelPort) && panelPort > 0 && panelPort <= 65535;
+            const add = (protocol, port, label = '', origin = 'custom') => {
                 const key = protocol + ':' + port;
-                if (!rows.has(key)) rows.set(key, { key, protocol, port, label, scope: 'closed', sources: '', listening: false });
-                return rows.get(key);
+                if (!rows.has(key)) rows.set(key, { key, protocol, port, label, scope: 'closed', sources: '', listening: false, custom: false, fixed: false, detected: false, legacy: false });
+                const row = rows.get(key);
+                row[origin === 'listener' ? 'detected' : origin] = true;
+                return row;
             };
-            add('tcp', s.ssh_port || 22, 'SSH'); add('tcp', s.panel_port || 8443, 'YUB WPanel');
-            add('tcp', 80, 'HTTP'); add('tcp', 443, 'HTTPS'); add('udp', 443, 'HTTP/3');
-            add('tcp', 3306, 'MariaDB'); add('tcp', 6379, 'Redis');
+            add('tcp', s.ssh_port || 22, 'SSH', 'fixed');
+            if (panelPortKnown) add('tcp', panelPort, 'YUB WPanel', 'fixed');
+            add('tcp', 80, 'HTTP', 'fixed'); add('tcp', 443, 'HTTPS', 'fixed'); add('udp', 443, 'HTTP/3', 'fixed');
+            add('tcp', 3306, 'MariaDB', 'fixed'); add('tcp', 6379, 'Redis', 'fixed');
             for (const l of s.listeners || []) {
-                const r = add(l.protocol, Number(l.port), l.process || '');
+                const label = this.serviceDisplayName(l.process) === 'YUB WPanel' && (!panelPortKnown || Number(l.port) !== panelPort) ? '' : l.process || '';
+                const r = add(l.protocol, Number(l.port), label, 'listener');
+                r.process = l.process || '';
                 if (l.bind_scope !== 'local') r.listening = true;
             }
-            for (const r of s.rules || []) add(r.protocol, Number(r.port), r.description || '');
+            for (const r of s.rules || []) {
+                const label = this.serviceDisplayName(r.description) === 'YUB WPanel' && (!panelPortKnown || Number(r.port) !== panelPort) ? '' : r.description || '';
+                add(r.protocol, Number(r.port), label, 'legacy');
+            }
             if (s.access_enabled) {
                 for (const rule of s.access_rules || []) {
                     const r = add(rule.protocol, Number(rule.port));
@@ -93,41 +124,103 @@ function firewallManager(initialTab = 'current') {
                     else { if (r.scope !== 'public') r.scope = 'specific'; r.sources += (r.sources ? ', ' : '') + rule.source; }
                 }
             } else {
-                for (const port of [s.ssh_port || 22, s.panel_port || 8443]) Object.assign(add('tcp', port), { scope: 'public', sources: s.current_management_ip || '' });
+                for (const port of [s.ssh_port || 22, ...(panelPortKnown ? [panelPort] : [])]) Object.assign(add('tcp', port), { scope: 'public', sources: s.current_management_ip || '' });
                 add('tcp', 80).scope = 'public'; add('tcp', 443).scope = 'public';
             }
             this.accessRows = [...rows.values()]; this.accessPreview = null; this.accessDirty = false; this.accessError = '';
         },
-        accessSensitive(row) { return [3306, 6379].includes(Number(row.port)); },
+        accessSensitive(row) { return [7080, 3306, 6379].includes(Number(row.port)); },
         accessPayload() {
             return this.accessRows.flatMap(r => r.scope === 'closed' ? [] : r.scope === 'public' ? [{ protocol: r.protocol, port: Number(r.port), source: '' }] : String(r.sources).split(/[,\s]+/).filter(Boolean).map(source => ({ protocol: r.protocol, port: Number(r.port), source })));
         },
+        accessNeedsConfirmation(preview = this.accessPreview) { return preview?.requires_confirmation !== false; },
+        accessReviewHelp() { return this.accessNeedsConfirmation() ? t('firewall.access_management_review') : t('firewall.access_ordinary_review'); },
+        focusAccessSaveStage() {
+            this.$nextTick?.(() => {
+                const stage = this.accessToken ? this.$refs?.accessSaveVerification : this.$refs?.accessSaveReview;
+                stage?.scrollIntoView({ block: 'nearest' });
+                stage?.focus({ preventScroll: true });
+            });
+        },
+        async startAccessSave() {
+            await this.previewAccess();
+            if (this.accessPreview && !this.accessToken && !this.accessNeedsConfirmation()) { await this.applyAccess(); return; }
+            if (this.accessPreview && !this.accessToken) this.focusAccessSaveStage();
+        },
+        editAccessDraft() {
+            if (this.accessBusy || this.portSubmitting || this.accessToken) return;
+            this.accessPreview = null;
+        },
+        clearAccessTimers() {
+            clearTimeout(this.accessTimer);
+            clearTimeout(this.accessExpiryTimer);
+            this.accessTimer = null;
+            this.accessExpiryTimer = null;
+        },
+        async checkAccessRollback() {
+            if (!this.accessToken || !this.accessRollbackReady || this.accessBusy || this.portSubmitting) return;
+            this.accessBusy = true;
+            try {
+                if (!await this.fetchPortStatus({ resetDraft: true })) {
+                    this.accessError = t('firewall.access_status_unverified');
+                    return;
+                }
+                // A successful status read alone does not prove that the
+                // temporary rules were restored or deliberately confirmed.
+                const sameChange = /^[a-f0-9]{32}$/.test(this.accessChangeID) && this.portStatus.access_change_id === this.accessChangeID;
+                if (!sameChange || !['rolled_back', 'confirmed'].includes(this.portStatus.access_change_state)) {
+                    this.accessError = this.portStatus.access_change_error || t('firewall.access_status_unverified');
+                    return;
+                }
+                this.clearAccessTimers();
+                this.accessToken = ''; this.accessChangeID = ''; this.accessChecked = false; this.accessSSHValidation = false; this.accessExpired = false; this.accessRollbackReady = false; this.accessDeadline = '';
+            } finally { this.accessBusy = false; }
+        },
         async previewAccess() {
             if (this.accessRows.some(r => r.scope === 'specific' && !String(r.sources).trim())) { this.accessError = t('firewall.source_required'); showToast(this.accessError, 'error'); return; }
-            if (this.accessBusy || this.accessToken) return;
+            if (this.accessBusy || this.accessToken || this.portSubmitting) return;
             this.accessBusy = true; this.accessPreview = null; this.accessError = '';
             try { const r = await api('/firewall/ports/access/preview', { method: 'POST', body: { rules: this.accessPayload() } }); if (!r.success) throw Error(r.message || t('common.operation_failed')); this.accessPreview = r.data; }
             catch(e) { this.accessError = e.message; showToast(e.message, 'error'); } finally { this.accessBusy = false; }
         },
         async applyAccess() {
-            if (this.accessBusy || this.accessToken || !this.accessPreview || !await confirmModal(t('firewall.access_apply_confirm'))) return;
+            if (this.accessBusy || this.accessToken || this.portSubmitting || !this.accessPreview) return;
+            const preview = this.accessPreview, requiresConfirmation = this.accessNeedsConfirmation(preview);
             this.accessBusy = true;
             try {
-                const r = await api('/firewall/ports/access/apply', { method: 'POST', body: { rules: this.accessPreview.rules, fingerprint: this.accessPreview.fingerprint }, timeout: 30000 });
-                if (!r.success || !r.data?.confirmation_token) throw Error(t('common.operation_failed'));
-                clearTimeout(this.accessTimer);
-                this.accessTimer = setTimeout(() => { this.accessToken = ''; this.accessChecked = false; this.fetchPortStatus(); }, 95000);
-                this.accessToken = r.data.confirmation_token; this.accessDeadline = r.data.deadline; this.accessChecked = false; this.accessPreview = null;
-                await this.fetchPortStatus();
-            } catch(e) { this.accessError = e.message; showToast(e.message, 'error'); this.accessPreview = null; } finally { this.accessBusy = false; }
+                if (requiresConfirmation && !await confirmModal(t('firewall.access_apply_confirm'))) return;
+                if (this.accessToken || this.portSubmitting || this.accessPreview !== preview) return;
+                const r = await api('/firewall/ports/access/apply', { method: 'POST', body: { rules: preview.rules, fingerprint: preview.fingerprint }, timeout: 30000 });
+                if (!r.success) throw Error(r.message || t('common.operation_failed'));
+                if (r.data?.saved === true && r.data.requires_confirmation === false && r.data.requires_ssh_validation !== true && !r.data.confirmation_token) {
+                    this.clearAccessTimers(); this.accessPreview = null; this.accessDirty = false; this.accessError = '';
+                    this.accessSSHValidation = false; this.accessChecked = false;
+                    const observed = await this.fetchPortStatus({ resetDraft: true });
+                    showToast(t('firewall.access_saved'), 'success');
+                    if (!observed) this.accessError = t('firewall.access_saved_status_unavailable');
+                    return;
+                }
+                if (!r.data?.confirmation_token || r.data.saved === true || r.data.requires_confirmation === false) throw Error(t('common.operation_failed'));
+                this.clearAccessTimers();
+                this.accessSSHValidation = r.data.requires_ssh_validation === true;
+                this.accessToken = r.data.confirmation_token; this.accessChangeID = typeof r.data.change_id === 'string' && /^[a-f0-9]{32}$/.test(r.data.change_id) ? r.data.change_id : ''; this.accessDeadline = r.data.deadline; this.accessChecked = false; this.accessPreview = null; this.accessRollbackReady = false;
+                const remaining = Date.parse(this.accessDeadline) - Date.now();
+                this.accessExpired = !Number.isFinite(remaining) || remaining <= 0;
+                if (!this.accessExpired) this.accessExpiryTimer = setTimeout(() => { this.accessExpired = true; this.accessChecked = false; }, remaining);
+                this.accessTimer = setTimeout(() => { this.accessExpired = true; this.accessChecked = false; this.accessRollbackReady = true; this.checkAccessRollback(); }, 95000);
+                await this.fetchPortStatus({ resetDraft: true });
+                if (!this.accessChangeID) this.accessError = t('firewall.access_status_unverified');
+            } catch(e) { this.accessError = e.message + ' ' + t(requiresConfirmation ? 'firewall.access_apply_uncertain' : 'firewall.access_save_uncertain'); showToast(this.accessError, 'error'); this.accessPreview = null; } finally { this.accessBusy = false; if (this.accessToken) this.focusAccessSaveStage(); }
         },
         async confirmAccess() {
-            if (this.accessBusy || !this.accessChecked || !this.accessToken) return;
+            if (this.accessBusy || this.portSubmitting || !this.accessChecked || !this.accessToken || this.accessExpired) return;
+            const deadline = Date.parse(this.accessDeadline);
+            if (!Number.isFinite(deadline) || Date.now() >= deadline) { this.accessExpired = true; this.accessChecked = false; return; }
             this.accessBusy = true;
             try {
                 const r = await api('/firewall/ports/access/confirm', { method: 'POST', body: { token: this.accessToken }, timeout: 20000 });
                 if (!r.success) throw Error(t('common.operation_failed'));
-                clearTimeout(this.accessTimer); this.accessToken = ''; this.accessChecked = false; await this.fetchPortStatus(); showToast(t('firewall.access_saved'), 'success');
+                this.clearAccessTimers(); this.accessToken = ''; this.accessChangeID = ''; this.accessChecked = false; this.accessSSHValidation = false; this.accessExpired = false; this.accessRollbackReady = false; this.accessDeadline = ''; const observed = await this.fetchPortStatus({ resetDraft: true }); showToast(t('firewall.access_saved'), 'success'); if (!observed) this.accessError = t('firewall.access_saved_status_unavailable');
             } catch(e) { this.accessError = e.message; showToast(e.message, 'error'); } finally { this.accessBusy = false; }
         },
         init() {
@@ -155,20 +248,25 @@ function firewallManager(initialTab = 'current') {
                 this.fetchPortStatus();
             }
         },
-        async fetchPortStatus() {
+        async fetchPortStatus({ resetDraft = false } = {}) {
             this.portsLoading = true;
             try {
                 const r = await api('/firewall/ports', { silent: true });
                 if (r.success) {
                     this.portStatus = r.data || this.portStatus;
-                    this.resetAccessRows();
+                    if (resetDraft || !this.accessDirty) this.resetAccessRows();
+                    else this.accessPreview = null;
                     if (this.portForm.source_mode === 'current') this.portForm.source = this.portStatus.current_management_ip || '';
                     this.portsLoaded = true;
+                    return true;
                 }
+                return false;
             } catch(e) { showToast(e.message || t('common.operation_failed'), 'error'); }
             finally { this.portsLoading = false; }
+            return false;
         },
         async addPortRule() {
+            if (this.portStatus.access_enabled || this.accessToken || this.accessBusy || this.portSubmitting) return;
             if (!this.portForm.port) return;
             if (this.portForm.source_mode !== 'any' && !String(this.portForm.source || '').trim()) {
                 showToast(t('firewall.source_required'), 'error');
@@ -178,11 +276,12 @@ function firewallManager(initialTab = 'current') {
                 showToast(t('firewall.duration_required'), 'error');
                 return;
             }
-            if (this.portForm.source_mode === 'any' && !(await confirmModal(t('firewall.confirm_any_source')))) return;
-            const scope = this.portForm.source_mode === 'any' ? t('firewall.any_source') : this.portForm.source;
-            if (!(await confirmModal(t('firewall.confirm_open_port', { protocol: this.portForm.protocol.toUpperCase(), port: this.portForm.port, source: scope })))) return;
             this.portSubmitting = true;
             try {
+                if (this.portForm.source_mode === 'any' && !(await confirmModal(t('firewall.confirm_any_source')))) return;
+                const scope = this.portForm.source_mode === 'any' ? t('firewall.any_source') : this.portForm.source;
+                if (!(await confirmModal(t('firewall.confirm_open_port', { protocol: this.portForm.protocol.toUpperCase(), port: this.portForm.port, source: scope })))) return;
+                if (this.portStatus.access_enabled || this.accessToken || this.accessBusy) return;
                 const body = { ...this.portForm, confirm_public: this.portForm.source_mode === 'any' };
                 if (body.duration_mode === 'permanent') body.duration_minutes = 0;
                 await api('/firewall/ports', { method: 'POST', body });
@@ -197,9 +296,11 @@ function firewallManager(initialTab = 'current') {
             this.portForm = { protocol: 'tcp', port: null, source: this.portStatus.current_management_ip || '', source_mode: 'current', description: '', duration_mode: 'permanent', duration_minutes: 60, confirm_public: false };
         },
         applyPortPreset(preset) {
+            const port = preset.portKey ? Number(this.portStatus[preset.portKey] || preset.fallback) : preset.fallback;
+            if (!Number.isInteger(port) || port < 1 || port > 65535) { showToast(t('firewall.panel_port_unknown'), 'error'); return; }
             this.selectedPortPreset = preset.key;
             this.portForm.protocol = preset.protocol;
-            this.portForm.port = preset.portKey ? (this.portStatus[preset.portKey] || preset.fallback) : preset.fallback;
+            this.portForm.port = port;
             this.portForm.description = preset.description;
             this.portForm.source_mode = preset.sourceMode;
             this.onSourceModeChange();
@@ -213,7 +314,21 @@ function firewallManager(initialTab = 'current') {
             if (this.portForm.source_mode === 'any') this.portForm.source = '';
             if (this.portForm.source_mode === 'specific' && this.portForm.source === this.portStatus.current_management_ip) this.portForm.source = '';
         },
-        async enableProtection() { await this.previewAccess(); },
+        async enableProtection() { await this.startAccessSave(); },
+        firewallBackendLabel() {
+            const backend = this.portStatus.backend || '';
+            return { nftables: 'nftables', ufw: 'UFW', iptables: 'iptables' }[backend.toLowerCase()] || backend || '--';
+        },
+        firewallPolicyLabel() {
+            if (this.portStatus.access_enabled) return t('firewall.access_policy_restricted');
+            const policy = (this.portStatus.input_policy || '').toLowerCase();
+            return { drop: t('firewall.policy_drop'), accept: t('firewall.policy_accept') }[policy] || this.portStatus.input_policy || '--';
+        },
+        serviceDisplayName(value) {
+            const raw = String(value || '').trim().replace(/^"|"$/g, '');
+ if (/^php-fpm(?:[0-9.]+)?$/i.test(raw)) return 'PHP-FPM';
+            return { http: 'HTTP', https: 'HTTPS', 'http/3': 'HTTP/3', ssh: 'SSH', sshd: 'SSH', dns: 'DNS', ntp: 'NTP', redis: 'Redis', 'redis-server': 'Redis', mariadb: 'MariaDB', mariadbd: 'MariaDB', mysqld: 'MariaDB', nginx: 'Nginx', wordpress: 'WordPress', 'yub-wpanel': 'YUB WPanel' }[raw.toLowerCase()] || raw;
+        },
         formatFirewallTime(value) {
             if (!value) return '--';
             const date = new Date(value);
@@ -228,12 +343,16 @@ function firewallManager(initialTab = 'current') {
             return t('firewall.exposure_rule_dependent');
         },
         async deletePortRule(rule) {
-            if (!(await confirmModal(t('firewall.confirm_close_port', { protocol: String(rule.protocol || '').toUpperCase(), port: rule.port })))) return;
+            if (this.portStatus.access_enabled || this.accessBusy || this.accessToken || this.portSubmitting) return;
+            this.portSubmitting = true;
             try {
+                if (!(await confirmModal(t('firewall.confirm_remove_legacy', { protocol: String(rule.protocol || '').toUpperCase(), port: rule.port })))) return;
+                if (this.portStatus.access_enabled || this.accessBusy || this.accessToken) return;
                 await api('/firewall/ports/' + encodeURIComponent(rule.id), { method: 'DELETE' });
                 await this.fetchPortStatus();
-                showToast(t('firewall.port_closed'), 'success');
+                showToast(t('firewall.legacy_removed'), 'success');
             } catch(e) { showToast(e.message || t('common.operation_failed'), 'error'); }
+            finally { this.portSubmitting = false; }
         },
         async fetchBans() {
             try {
@@ -360,7 +479,25 @@ function firewallManager(initialTab = 'current') {
             for (let i = start; i <= end; i++) pages.push(i);
             return pages;
         },
-        banLevelText(l) { return [t('firewall.ban_level_empty'), t('firewall.ban_level_rate_limit'), t('firewall.ban_level_10m'), t('firewall.ban_level_24h'), t('firewall.ban_level_30d'), t('firewall.ban_level_permanent')][l] || t('firewall.unknown'); },
+        banLevelText(l, ban = null) {
+            if (Number(l) === 4 && ban) {
+                const parseTime = value => {
+                    if (typeof value !== 'string' || !value.trim()) return NaN;
+                    const text = value.trim();
+                    return Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text) ? text.replace(' ', 'T') + 'Z' : text);
+                };
+                const seconds = Math.round((parseTime(ban.expires_at) - parseTime(ban.banned_at)) / 1000);
+                if (Number.isSafeInteger(seconds) && seconds > 0) {
+                    const units = [[86400, 'day'], [3600, 'hour'], [60, 'minute'], [1, 'second']];
+                    // Round only sub-second storage differences; never infer a
+                    // fixed duration from the historical severity bucket.
+                    const [divisor, unit] = units.find(([divisor]) => seconds % divisor === 0);
+                    const duration = new Intl.NumberFormat(currentLocale(), {style: 'unit', unit, unitDisplay: 'long'}).format(seconds / divisor);
+                    return t('firewall.ban_level_duration', {duration});
+                }
+            }
+            return [t('firewall.ban_level_empty'), t('firewall.ban_level_rate_limit'), t('firewall.ban_level_10m'), t('firewall.ban_level_24h'), t('firewall.ban_level_30d'), t('firewall.ban_level_permanent')][l] || t('firewall.unknown');
+        },
         banLevelClass(l) { return ['','badge-info','badge-warning','badge-danger','badge-danger','badge-danger'][l] || 'badge-info'; },
         riskClass(level) {
             if (level === '高' || level === 'high') return 'badge-danger';
@@ -381,6 +518,8 @@ function firewallManager(initialTab = 'current') {
             if (type === 'sensitive_file_scan') return t('firewall.type_sensitive_file_scan');
             if (type === 'sqli_probe') return t('firewall.type_sqli_probe');
             if (type === 'sqli_blocked') return t('firewall.type_sqli_blocked');
+            if (type === 'wp_login_failed') return t('firewall.type_wp_login_failed');
+            if (type === 'xmlrpc_blocked') return t('firewall.type_xmlrpc_blocked');
             if (type === 'fake_search_bot') return t('firewall.type_fake_search_bot');
             if (type === 'suspicious_php') return t('firewall.type_suspicious_php');
             return type;

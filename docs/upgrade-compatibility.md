@@ -71,3 +71,8 @@ Startup and repair preflight therefore require the four configuration identities
 Before any future cross-identity migration, preserve a full server snapshot, the panel SQLite database, site files and databases, configuration files, and certificates. This repository does not yet ship the dedicated signed, rollback-capable migration tool required for that operation.
 
 The site-migration feature moves sites between YUB WPanel servers on the same version; it does not migrate the panel distribution itself.
+## 升级到 v2.4.0
+
+使用已签名安装入口并选择“继续/修复安装”，同步二进制和版本绑定的许可材料。升级前保留面板 SQLite 数据库、配置和网站备份；启用双因素登录或 Cloudflare 后，另行保留数据目录中的 `account-mfa.key` 和 `cloudflare-security.key`。下载的面板数据库备份不包含这两个密钥。
+
+本版本增加 1.0.67/1.0.68 数据库升级步骤，启动时执行。旧的独立文件与数据库备份继续保留；新整站恢复点关联文件和数据库，已有独立备份不会自动转换。Nginx/PHP-FPM、FastCGI、图片优化、网站迁移、安装路径和发行签名身份保留。

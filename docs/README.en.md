@@ -4,6 +4,8 @@
 
 A lightweight VPS and WordPress management panel powered by **Nginx, PHP-FPM, MariaDB, and Redis**. Manage sites, databases, SSL, caching, backups, and server maintenance.
 
+The panel uses the original dark theme. v2.4.0 adds coordinated site recovery, account MFA and per-site Cloudflare protection. Use the signed installer's repair mode for this upgrade; keep MFA and Cloudflare keys separately from database backups. See the [upgrade guide](upgrade-compatibility.md).
+
 [中文](../README.md) · [User guide](../docs/project-guide.en.md) · [Releases](https://github.com/zangwp/Z-Wpanel/releases) · [Issues](https://github.com/zangwp/Z-Wpanel/issues)
 
 ## Installation

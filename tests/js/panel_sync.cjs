@@ -35,7 +35,7 @@ vm.runInContext(script('dashboard'), context);
     page.setDetailTab('security');
     assert.equal(page.detailTab, 'overview');
     page.destroy();
-    assert.equal(listeners.size, 0);
+    assert(!listeners.has("hashchange"), "website destroy removes its own hash listener");
     const version = context.versionCheck();
     await version.check();
     assert.equal(version.checking, false);

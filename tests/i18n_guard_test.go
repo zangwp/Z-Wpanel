@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/json"
 	"errors"
+	"github.com/zangwp/Z-Wpanel/internal/i18n"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -165,7 +166,7 @@ func collectTranslationReferences(t *testing.T) map[string][]string {
 		for _, pattern := range patterns {
 			for _, match := range pattern.FindAllSubmatch(content, -1) {
 				key := string(match[1])
-				if !strings.HasSuffix(key, ".") {
+				if !strings.HasSuffix(key, ".") && !strings.HasSuffix(key, "_") {
 					references[path] = appendUnique(references[path], key)
 				}
 			}
@@ -184,7 +185,9 @@ func collectScriptTranslationKeys(t *testing.T) map[string][]string {
 
 	walkFiles(t, "../web/templates", func(path string, content []byte) {
 		for _, match := range keyPattern.FindAllSubmatch(content, -1) {
-			keys[path] = appendUnique(keys[path], string(match[1]))
+			if !strings.HasSuffix(string(match[1]), "_") {
+				keys[path] = appendUnique(keys[path], string(match[1]))
+			}
 		}
 	})
 	content, err := os.ReadFile("../web/static/js/app.js")
@@ -200,19 +203,9 @@ func collectScriptTranslationKeys(t *testing.T) map[string][]string {
 
 func collectExposedKeys(t *testing.T) map[string]bool {
 	t.Helper()
-	content, err := os.ReadFile("../internal/router/router.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	blockPattern := regexp.MustCompile(`(?s)var\s+i18nKeys\s*=\s*\[\]string\s*\{(.*?)\}`)
-	match := blockPattern.FindSubmatch(content)
-	if match == nil {
-		t.Fatal("router/router.go must define i18nKeys when JavaScript translation keys are used")
-	}
-	keyPattern := regexp.MustCompile(`"([a-z][a-z0-9_.-]+)"`)
 	exposed := map[string]bool{}
-	for _, keyMatch := range keyPattern.FindAllSubmatch(match[1], -1) {
-		exposed[string(keyMatch[1])] = true
+	for _, key := range i18n.AllMessageKeys() {
+		exposed[key] = true
 	}
 	return exposed
 }

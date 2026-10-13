@@ -1,31 +1,31 @@
 package handlers
 
 import (
-	"os"
-	"path/filepath"
+	"context"
+	"strings"
+
 	"testing"
 )
 
 func withFakeSystemctlUnits(t *testing.T, units string) {
 	t.Helper()
-	binDir := t.TempDir()
-	script := "#!/bin/sh\n" +
-		"if [ \"$1\" = \"list-unit-files\" ]; then\n" +
-		"  for u in $FAKE_SYSTEMCTL_UNITS; do\n" +
-		"    if [ \"$u\" = \"$2\" ]; then\n" +
-		"      echo \"$2 enabled enabled\"\n" +
-		"      exit 0\n" +
-		"    fi\n" +
-		"  done\n" +
-		"  echo \"0 unit files listed.\"\n" +
-		"  exit 0\n" +
-		"fi\n" +
-		"exit 1\n"
-	if err := os.WriteFile(filepath.Join(binDir, "systemctl"), []byte(script), 0755); err != nil {
-		t.Fatal(err)
+	old := timeSyncCommand
+	t.Cleanup(func() { timeSyncCommand = old })
+	timeSyncCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if name != "systemctl" || len(args) < 2 || args[0] != "show" {
+			t.Fatalf("unexpected unit probe: %s %v", name, args)
+		}
+		state := "not-found"
+		for _, unit := range strings.Fields(units) {
+			if args[1] == unit {
+				state = "loaded"
+			}
+		}
+		return []byte("Id=" + args[1] + "\nLoadState=" + state + "\nActiveState=inactive\n"), nil
 	}
-	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
-	t.Setenv("FAKE_SYSTEMCTL_UNITS", units)
 }
 
 func TestDetectNTPTimeSyncUnitPrefersChrony(t *testing.T) {
@@ -50,26 +50,14 @@ func TestDetectNTPTimeSyncUnitReturnsEmptyWhenNeitherExists(t *testing.T) {
 }
 
 func withFakeSystemctlMasked(t *testing.T, maskedUnit, availableUnit string) {
-	t.Helper()
-	binDir := t.TempDir()
-	script := "#!/bin/sh\n" +
-		"if [ \"$1\" = \"list-unit-files\" ]; then\n" +
-		"  if [ \"$2\" = \"" + maskedUnit + "\" ]; then\n" +
-		"    echo \"" + maskedUnit + " masked -\"\n" +
-		"    exit 0\n" +
-		"  fi\n" +
-		"  if [ \"$2\" = \"" + availableUnit + "\" ]; then\n" +
-		"    echo \"" + availableUnit + " enabled enabled\"\n" +
-		"    exit 0\n" +
-		"  fi\n" +
-		"  echo \"0 unit files listed.\"\n" +
-		"  exit 0\n" +
-		"fi\n" +
-		"exit 1\n"
-	if err := os.WriteFile(filepath.Join(binDir, "systemctl"), []byte(script), 0755); err != nil {
-		t.Fatal(err)
+	withFakeSystemctlUnits(t, availableUnit)
+	previous := timeSyncCommand
+	timeSyncCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if len(args) > 1 && args[1] == maskedUnit {
+			return []byte("Id=" + maskedUnit + "\nLoadState=masked\nActiveState=inactive\n"), nil
+		}
+		return previous(ctx, name, args...)
 	}
-	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 }
 
 func TestDetectNTPTimeSyncUnitSkipsMaskedChrony(t *testing.T) {

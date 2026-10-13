@@ -5,12 +5,13 @@ import "time"
 type WebsiteStatus string
 
 const (
-	StatusActive   WebsiteStatus = "active"
-	StatusPaused   WebsiteStatus = "paused"
-	StatusMigrated WebsiteStatus = "migrated"
-	StatusError    WebsiteStatus = "error"
-	StatusCreating WebsiteStatus = "creating"
-	StatusDeleting WebsiteStatus = "deleting"
+	StatusActive            WebsiteStatus = "active"
+	StatusPaused            WebsiteStatus = "paused"
+	StatusMigrated          WebsiteStatus = "migrated"
+	StatusError             WebsiteStatus = "error"
+	StatusCreating          WebsiteStatus = "creating"
+	StatusDeleting          WebsiteStatus = "deleting"
+	StatusBackupMaintenance WebsiteStatus = "backup_maintenance"
 )
 
 type Website struct {

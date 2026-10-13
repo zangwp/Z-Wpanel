@@ -8,33 +8,14 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zangwp/Z-Wpanel/internal/middleware"
-	"golang.org/x/crypto/bcrypt"
+
 	_ "modernc.org/sqlite"
 )
 
 func setupLoginCSRFTest(t *testing.T) (*gin.Engine, *sql.DB) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`CREATE TABLE admin_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL)`); err != nil {
-		t.Fatal(err)
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO admin_users(username,password_hash) VALUES ('admin',?)`, string(hash)); err != nil {
-		t.Fatal(err)
-	}
-	router := gin.New()
-	handler := &AuthHandler{DB: db}
-	router.POST("/login", middleware.CSRF(), handler.Login)
-	return router, db
+	handler, router := setupMFAHandler(t)
+	return router, handler.DB
 }
 
 func performLoginCSRFTest(t *testing.T, router http.Handler, cookieToken, headerToken string) *httptest.ResponseRecorder {

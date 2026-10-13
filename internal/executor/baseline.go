@@ -1,6 +1,8 @@
 package executor
 
 import (
+	"github.com/zangwp/Z-Wpanel/internal/database"
+
 	"fmt"
 	"log"
 	"os"
@@ -15,6 +17,7 @@ func EnsureWordPressBaseline() {
 	ensureNginxSSLDefaultServer()
 	ensureMariaDBBaseline()
 	ensureRedisBaseline()
+	ensureWordPressLoginAuditBaseline()
 }
 
 func ensurePHPBaseline() {
@@ -149,4 +152,45 @@ func getTotalMemoryKB() int64 {
 	var kb int64
 	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &kb)
 	return kb
+}
+
+func ensureWordPressLoginAuditBaseline() {
+	db := database.GetDB()
+	if db == nil {
+		return
+	}
+	rows, err := db.Query(`SELECT id, domain, web_root, log_dir, system_user FROM websites WHERE site_type != 'php'`)
+	if err != nil {
+		log.Printf("[Z-Wpanel] 读取 WordPress 登录审计基线失败: %v", err)
+		return
+	}
+	type auditSite struct {
+		id                            int
+		domain, webRoot, logDir, user string
+	}
+	var sites []auditSite
+	for rows.Next() {
+		var site auditSite
+		if err := rows.Scan(&site.id, &site.domain, &site.webRoot, &site.logDir, &site.user); err != nil {
+			log.Printf("[Z-Wpanel] 读取 WordPress 登录审计站点失败: %v", err)
+			continue
+		}
+		sites = append(sites, site)
+	}
+	readErr := rows.Err()
+	rows.Close() // PHP-runtime lookup may use the same SQLite connection.
+	if readErr != nil {
+		log.Printf("[Z-Wpanel] WordPress 登录审计基线扫描失败: %v", readErr)
+	}
+	for _, site := range sites {
+		if !TryAcquireSiteOpLock(site.id, "login-audit-baseline") {
+			log.Printf("[Z-Wpanel] 网站维护中，跳过登录审计基线 site=%d", site.id)
+			continue
+		}
+		err := ConfigureWPLoginFailureLogging(site.webRoot, site.logDir, site.user)
+		ReleaseSiteOpLock(site.id)
+		if err != nil {
+			log.Printf("[Z-Wpanel] WordPress 登录审计基线未启用 domain=%s: %v", site.domain, err)
+		}
+	}
 }

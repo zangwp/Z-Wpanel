@@ -16,6 +16,7 @@ type UpdateSecuritySettingsRequest struct {
 	Fail2banBanTime  *int    `json:"fail2ban_bantime"`
 	AutoWhitelist    *bool   `json:"auto_whitelist_enabled"`
 	WhitelistIPs     *string `json:"whitelist_ips"`
+	SSHWhitelistIPs  *string `json:"ssh_whitelist_ips"`
 }
 
 type CDNRealIPGroup struct {

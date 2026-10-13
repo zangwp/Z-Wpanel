@@ -1601,19 +1601,24 @@ func TestSidebarNavigationOrder(t *testing.T) {
 	}
 }
 
-func TestBaseProvidesPersistentLightDarkThemeToggle(t *testing.T) {
+func TestBaseUsesOnlyOriginalDarkTheme(t *testing.T) {
 	source, err := os.ReadFile("../../web/templates/base.html")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, required := range [][]byte{
 		[]byte(`/css/theme.css`),
-		[]byte(`localStorage.getItem('yub-wpanel-theme')`),
-		[]byte(`localStorage.setItem('yub-wpanel-theme'`),
-		[]byte(`@click="toggleTheme()"`),
+		[]byte(`class="dark" data-theme="dark"`),
+		[]byte(`document.documentElement.dataset.theme = 'dark'`),
+		[]byte(`localStorage.removeItem('yub-wpanel-theme')`),
 	} {
 		if !bytes.Contains(source, required) {
 			t.Fatalf("base theme support is missing %q", required)
+		}
+	}
+	for _, forbidden := range [][]byte{[]byte(`toggleTheme()`), []byte(`localStorage.setItem('yub-wpanel-theme'`)} {
+		if bytes.Contains(source, forbidden) {
+			t.Fatalf("base still permits a light theme: %q", forbidden)
 		}
 	}
 	if bytes.Contains(source, []byte(`href="/{{$.RandomSuffix}}/extensions"`)) {
@@ -1729,7 +1734,7 @@ func TestFileManagerStartsWithDirectoryList(t *testing.T) {
 		[]byte(`url.searchParams.set('site_id', this.selectedSite)`),
 		[]byte(`calculateDirectorySize(siteID, path)`),
 		[]byte(`'/files/size?site_id='`),
-		[]byte(`{ timeout: 65000, suppressToast: true }`),
+		[]byte(`timeout: 65000, silent: true, signal: controller.signal`),
 		[]byte(`deepLinkFailed: false`),
 		[]byte(`this.deepLinkFailed = true`),
 	} {
@@ -1819,7 +1824,7 @@ func testPageData(content string) map[string]any {
 		"AssetPrefix":     "/test/assets",
 		"CSRFToken":       "test",
 		"Lang":            i18n.DefaultLang,
-		"MessagesJSON":    i18n.MessagesJSON(i18n.DefaultLang, i18nKeys),
+		"MessagesJSON":    i18n.MessagesJSON(i18n.DefaultLang, i18n.AllMessageKeys()),
 	}
 }
 

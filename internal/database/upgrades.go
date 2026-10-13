@@ -751,6 +751,9 @@ var upgrades = []Upgrade{
 		Description: "移除不再维护的外部扩展推荐项",
 		Func:        removeDeprecatedExtensionRecommendation,
 	},
+
+	{Version: "1.0.67", Description: "网站访问与真实认证失败日志独立增量位置", SQL: []string{wpSecuritySourcePositionsSchema}},
+	{Version: "1.0.68", Description: "网站 Cloudflare 防护与域名覆盖状态", Func: ensureCloudflareSecurityCoverageSchema},
 }
 
 func removeDeprecatedExtensionRecommendation() error {

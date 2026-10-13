@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -61,7 +62,7 @@ func normalizeAccessRules(rules []FirewallAccessRule, managementIP string, sshPo
 			r.Source = network.String()
 			contains = network.Contains(ip)
 		}
-		if r.Source == "" && (r.Port == 3306 || r.Port == 6379) {
+		if r.Source == "" && (r.Port == 7080 || r.Port == 3306 || r.Port == 6379) {
 			return nil, fmt.Errorf("WebAdmin 和数据服务端口必须指定来源 IP/CIDR")
 		}
 		if r.Protocol == "tcp" && contains {
@@ -110,13 +111,102 @@ func accessRulesScript(rules []FirewallAccessRule, replace bool) string {
 			}
 			fmt.Fprintf(&b, "%s saddr %s ", family, r.Source)
 		}
-		fmt.Fprintf(&b, "%s dport %d counter accept comment \"yub-access:%s:%d:%s\"\n", r.Protocol, r.Port, r.Protocol, r.Port, r.Source)
+		fmt.Fprintf(&b, "%s dport %d counter accept comment \"ols-access:%s:%d:%s\"\n", r.Protocol, r.Port, r.Protocol, r.Port, r.Source)
 	}
 	b.WriteString("}\n}\n")
 	return b.String()
 }
 
-func accessFingerprint(ruleset string, rules []FirewallAccessRule) string {
+func accessFingerprint(ruleset string, rules []FirewallAccessRule, sshPort, panelPort int) string {
 	data, _ := json.Marshal(rules)
-	return fmt.Sprintf("%x", sha256.Sum256(append([]byte(ruleset+"\n"), data...)))
+	// A previously checked selection must not become valid after a management
+	// endpoint changes, even if it happened to include both old and new ports.
+	endpoints := fmt.Sprintf("\nssh=%d;panel=%d\n", sshPort, panelPort)
+	return fmt.Sprintf("%x", sha256.Sum256(append([]byte(ruleset+endpoints), data...)))
+}
+
+// accessSourceCovers proves that every address admitted by previous remains
+// admitted by next. Public access spans both families, so a single CIDR cannot
+// replace it even if it contains the current administrator.
+func accessSourceCovers(next, previous string) bool {
+	if next == "" {
+		return true
+	}
+	if previous == "" {
+		return false
+	}
+	_, nextNetwork, nextErr := net.ParseCIDR(next)
+	_, previousNetwork, previousErr := net.ParseCIDR(previous)
+	if nextErr != nil || previousErr != nil {
+		return false
+	}
+	nextBits, nextSize := nextNetwork.Mask.Size()
+	previousBits, previousSize := previousNetwork.Mask.Size()
+	return nextSize == previousSize && nextBits <= previousBits && nextNetwork.Contains(previousNetwork.IP)
+}
+
+func accessManagementPreserved(previous, next []FirewallAccessRule, sshPort, panelPort int) bool {
+	sshPresent, panelPresent := false, false
+	for _, old := range previous {
+		if old.Protocol != "tcp" || (old.Port != sshPort && old.Port != panelPort) {
+			continue
+		}
+		sshPresent = sshPresent || old.Port == sshPort
+		panelPresent = panelPresent || old.Port == panelPort
+		covered := false
+		for _, candidate := range next {
+			if candidate.Protocol == old.Protocol && candidate.Port == old.Port && accessSourceCovers(candidate.Source, old.Source) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return sshPresent && panelPresent
+}
+
+// Only an exact panel-owned table can use the fast save path. Tagged comments
+// alone do not prove rule semantics: a manual rule or forged comment must keep
+// the rollback workflow instead of silently losing management access.
+func accessTableMatchesManagedPolicy(table string, rules []FirewallAccessRule) bool {
+	current, currentOK := canonicalManagedAccessTable(table)
+	expected, expectedOK := canonicalManagedAccessTable(accessRulesScript(rules, false))
+	return currentOK && expectedOK && current == expected
+}
+
+var accessPolicySourceRE = regexp.MustCompile(`\b(ip|ip6) saddr ([0-9a-fA-F:./]+)`)
+var accessPolicyCounterRE = regexp.MustCompile(`\bcounter packets [0-9]+ bytes [0-9]+\b`)
+
+func canonicalManagedAccessTable(table string) (string, bool) {
+	value := strings.Join(strings.Fields(table), " ")
+	quoted := strings.Split(value, `"`)
+	if len(quoted)%2 == 0 {
+		return value, false
+	}
+	valid := true
+	for i := 0; i < len(quoted); i += 2 {
+		segment := strings.ReplaceAll(quoted[i], "priority filter - 5;", "priority -5;")
+		segment = strings.ReplaceAll(segment, "ct state { established, related }", "ct state established,related")
+		segment = accessPolicyCounterRE.ReplaceAllString(segment, "counter")
+		quoted[i] = accessPolicySourceRE.ReplaceAllStringFunc(segment, func(source string) string {
+			parts := strings.Fields(source)
+			address := parts[2]
+			if ip := net.ParseIP(address); ip != nil {
+				bits := 128
+				if ip.To4() != nil {
+					bits = 32
+				}
+				address = fmt.Sprintf("%s/%d", ip.String(), bits)
+			}
+			_, network, err := net.ParseCIDR(address)
+			if err != nil || (parts[0] == "ip") != (network.IP.To4() != nil) {
+				valid = false
+				return source
+			}
+			return parts[0] + " saddr " + network.String()
+		})
+	}
+	return strings.Join(quoted, `"`), valid
 }

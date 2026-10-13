@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 )
 
 type SettingsHandler struct {
+	Auth             *AuthHandler
 	WPPackageService *executor.WPPackageService
 	ConfigPath       string
 }
@@ -35,6 +37,7 @@ type settingsUpdateRequest struct {
 	Username                  *string `json:"username"`
 	BasicAuthUser             *string `json:"basic_auth_user"`
 	OldPassword               *string `json:"old_password"`
+	Code                      string  `json:"code"`
 	NewPassword               *string `json:"new_password"`
 	BasicAuthPw               *string `json:"basic_auth_password"`
 	Timezone                  *string `json:"timezone"`
@@ -65,7 +68,7 @@ var (
 	setSystemHostname = func(hostname string) error {
 		return exec.Command("hostnamectl", "set-hostname", hostname).Run()
 	}
-	enableSystemNTP    = StartSystemTimeSync
+	enableSystemNTP    = startSystemTimeSync
 	ntpTimeSyncUnit    = detectNTPTimeSyncUnit
 	readSystemTimezone = getTimezone
 	readSystemHostname = getHostname
@@ -126,10 +129,15 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 }
 
 func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8192)
 	var req settingsUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("参数错误"))
 		return
+	}
+	if req.Username != nil || req.NewPassword != nil || req.BasicAuthUser != nil || req.BasicAuthPw != nil {
+		unlock := LockAccountAuthentication()
+		defer unlock()
 	}
 
 	db := database.GetDB()
@@ -167,25 +175,56 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, models.ErrorResponse("请输入当前密码"))
 				return
 			}
-			if err := bcrypt.CompareHashAndPassword([]byte(currentPasswordHash), []byte(*req.OldPassword)); err != nil {
-				c.JSON(http.StatusBadRequest, models.ErrorResponse("当前密码错误"))
+		}
+		if passwordRequested {
+			if len(*req.NewPassword) < 8 || len(*req.NewPassword) > 72 {
+				c.JSON(http.StatusBadRequest, models.ErrorResponse("新密码应为8-72字节"))
 				return
 			}
 		}
-		if passwordRequested {
-			if len(*req.NewPassword) < 8 {
-				c.JSON(http.StatusBadRequest, models.ErrorResponse("新密码至少8位"))
+	}
+
+	basicAuthChanged := (req.BasicAuthUser != nil && *req.BasicAuthUser != "" &&
+		*req.BasicAuthUser != readConfigValue(h.configPath(), "basic_auth", "username")) ||
+		(req.BasicAuthPw != nil && *req.BasicAuthPw != "")
+	if basicAuthChanged && (usernameChanged || passwordRequested) {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("请分别保存入口认证与面板登录凭据"))
+		return
+	}
+	if basicAuthChanged {
+		if req.BasicAuthUser != nil && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$`).MatchString(*req.BasicAuthUser) {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse("用户名应为3-64位字母、数字、点、下划线或连字符"))
+			return
+		}
+		if req.BasicAuthPw != nil && *req.BasicAuthPw != "" && (len(*req.BasicAuthPw) < 8 || len(*req.BasicAuthPw) > 72) {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse("BasicAuth密码应为8-72字节"))
+			return
+		}
+	}
+	if usernameChanged || passwordRequested || basicAuthChanged {
+		auth := h.Auth
+		if auth == nil {
+			auth = &AuthHandler{DB: db}
+		}
+		password := ""
+		if req.OldPassword != nil {
+			password = *req.OldPassword
+		}
+		if !auth.VerifySensitiveCredential(c, password, req.Code) {
+			return
+		}
+	}
+	// Perform costly replacement hashing only after the rate-limited current
+	// password and MFA proof have passed. Reject overlong bcrypt inputs early.
+	if passwordRequested {
+		passwordChanged = bcrypt.CompareHashAndPassword([]byte(currentPasswordHash), []byte(*req.NewPassword)) != nil
+		if passwordChanged {
+			hash, err := bcrypt.GenerateFromPassword([]byte(*req.NewPassword), 12)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, models.ErrorResponse("密码加密失败"))
 				return
 			}
-			passwordChanged = bcrypt.CompareHashAndPassword([]byte(currentPasswordHash), []byte(*req.NewPassword)) != nil
-			if passwordChanged {
-				hash, err := bcrypt.GenerateFromPassword([]byte(*req.NewPassword), 12)
-				if err != nil {
-					c.JSON(http.StatusInternalServerError, models.ErrorResponse("密码加密失败"))
-					return
-				}
-				newPasswordHash = string(hash)
-			}
+			newPasswordHash = string(hash)
 		}
 	}
 
@@ -208,36 +247,26 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 				return
 			}
 		}
+		if usernameChanged {
+			if err := h.Auth.Audit.RenameUserTx(c.Request.Context(), tx, currentUsername, requestedUsername); err != nil {
+				accountSecurityUnavailable(c)
+				return
+			}
+		}
+		if _, err := h.Auth.Audit.RecordTx(c.Request.Context(), tx, requestAuditEvent(c, requestedUsername, "credentials_changed")); err != nil {
+			accountSecurityUnavailable(c)
+			return
+		}
 		if err := tx.Commit(); err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse("提交账户更新失败"))
 			return
 		}
 		middleware.GlobalSessionStore.DeleteAll()
+		h.Auth.dispatchSecurityNotifications(c)
 	}
 
-	if req.BasicAuthUser != nil && *req.BasicAuthUser != "" {
-		if err := updateConfigValue(h.configPath(), "basic_auth", "username", *req.BasicAuthUser); err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse("更新BasicAuth用户名失败"))
-			return
-		}
-		config.AppConfig.BasicAuth.Username = *req.BasicAuthUser
-	}
-
-	if req.BasicAuthPw != nil && *req.BasicAuthPw != "" {
-		if len(*req.BasicAuthPw) < 8 {
-			c.JSON(http.StatusBadRequest, models.ErrorResponse("BasicAuth密码至少8位"))
-			return
-		}
-		newHash, err := bcrypt.GenerateFromPassword([]byte(*req.BasicAuthPw), 12)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse("密码加密失败"))
-			return
-		}
-		if err := updateConfigValue(h.configPath(), "basic_auth", "password_hash", string(newHash)); err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse("更新BasicAuth密码失败"))
-			return
-		}
-		config.AppConfig.BasicAuth.PasswordHash = string(newHash)
+	if basicAuthChanged && !h.updateBasicAuthAccount(c, req) {
+		return
 	}
 
 	var tzRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_/+\\-]+(/[A-Za-z][A-Za-z0-9_/+\\-]+)*$`)
@@ -283,7 +312,7 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	if req.NtpSync != nil && *req.NtpSync {
 		if err := enableSystemNTP(); err != nil {
 			log.Printf("启用系统时间同步失败: %v", err)
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse("时间同步启动失败，请检查系统时间服务"))
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse("时间同步启动失败: "+err.Error()))
 			return
 		}
 		if !readSystemNTP() {
@@ -543,28 +572,89 @@ func readConfigValue(configPath, section, key string) string {
 }
 
 func getNTPSyncStatus() (bool, string) {
-	out, _ := exec.Command("bash", "-c", "timedatectl show --property=NTP --value 2>/dev/null").CombinedOutput()
+	out, _ := exec.Command("timedatectl", "show", "--property=NTPSynchronized", "--value").Output()
 	synced := strings.TrimSpace(string(out)) == "yes"
-	server := "pool.ntp.org"
+	server := ""
 	return synced, server
 }
+
+// StartSystemTimeSync shares the panel's provider-aware synchronization with the CLI.
 
 func getNTPEnabled() bool {
 	out, err := exec.Command("timedatectl", "show", "--property=NTP", "--value").CombinedOutput()
 	return err == nil && strings.TrimSpace(string(out)) == "yes"
 }
 
-// detectNTPTimeSyncUnit 返回受支持系统上实际安装的时间同步 systemd 单元。
-// 云服务商镜像常预装 chrony，也可能不提供 systemd-timesyncd 单元；
-// timedatectl set-ntp 本身对两者都有效，但重启动作必须作用于真实存在的
-// 单元，否则 systemctl restart 会因为单元不存在直接报错。
+// Prefer the running provider, rather than the first installed package. A
+// conflicting pair of active providers must be handled explicitly by the admin.
 func detectNTPTimeSyncUnit() string {
-	for _, unit := range []string{"chrony.service", "systemd-timesyncd.service"} {
-		if systemdUnitExists(unit) {
-			return unit
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	unit, _ := selectNTPTimeSyncUnit(ctx)
+	return unit
+}
+
+func selectNTPTimeSyncUnit(ctx context.Context) (string, error) {
+	var active, installed, masked []string
+	activeIDs := map[string]bool{}
+	for _, unit := range []string{"chrony.service", "systemd-timesyncd.service", "ntpsec.service", "ntp.service", "openntpd.service"} {
+		output, err := timeSyncCommand(ctx, "systemctl", "show", unit, "--property=Id", "--property=LoadState", "--property=ActiveState", "--no-pager")
+		properties := map[string]string{}
+		for _, line := range strings.Split(string(output), "\n") {
+			if key, value, ok := strings.Cut(line, "="); ok {
+				properties[strings.TrimSpace(key)] = strings.TrimSpace(value)
+			}
+		}
+		if err != nil && properties["LoadState"] != "not-found" {
+			return "", fmt.Errorf("无法确认 %s 的运行状态，停止修改时间同步服务", unit)
+		}
+		switch properties["LoadState"] {
+		case "masked":
+			// A running unit can be masked without being stopped. Ignoring it
+			// would allow starting another provider alongside the original daemon.
+			switch properties["ActiveState"] {
+			case "inactive", "failed", "maintenance":
+			default:
+				return "", fmt.Errorf("%s 已被屏蔽且仍在运行或活动状态未知，请先检查现有时间同步服务", unit)
+			}
+			masked = append(masked, unit)
+		case "loaded":
+			state := properties["ActiveState"]
+			switch state {
+			case "active", "activating", "reloading", "deactivating", "inactive", "failed", "maintenance":
+			default:
+				return "", fmt.Errorf("%s 的活动状态未知，停止修改时间同步服务", unit)
+			}
+			installed = append(installed, unit)
+			if state == "active" || state == "activating" || state == "reloading" || state == "deactivating" {
+				id := properties["Id"]
+				if id == "" {
+					id = unit
+				}
+				if !activeIDs[id] {
+					active = append(active, unit)
+					activeIDs[id] = true
+				}
+			}
+		case "not-found":
+			continue
+		default:
+			return "", fmt.Errorf("%s 的服务状态未知，停止修改时间同步服务", unit)
 		}
 	}
-	return ""
+	if len(active) > 1 {
+		return "", fmt.Errorf("检测到多个时间同步服务正在运行（%s）；请保留一套后重试", strings.Join(active, ", "))
+	}
+	if len(active) == 1 {
+		return active[0], nil
+	}
+	if len(installed) > 0 {
+		return installed[0], nil
+	}
+	if len(masked) > 0 {
+		return "", fmt.Errorf("时间同步服务已被管理员屏蔽（%s），请先检查服务策略", strings.Join(masked, ", "))
+	}
+	return "", nil
 }
 
 // systemdUnitExists 判断 unit 是否存在且未被 mask（masked 单元 restart 必然失败）。
@@ -575,7 +665,7 @@ func systemdUnitExists(unit string) bool {
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] == unit && fields[1] != "masked" {
+		if len(fields) >= 2 && fields[0] == unit && fields[1] != "masked" && fields[1] != "masked-runtime" {
 			return true
 		}
 	}

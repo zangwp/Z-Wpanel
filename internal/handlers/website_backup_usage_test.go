@@ -8,12 +8,15 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zangwp/Z-Wpanel/internal/config"
 	"github.com/zangwp/Z-Wpanel/internal/database"
-	"github.com/zangwp/Z-Wpanel/internal/models"
 )
 
 func setupBackupUsageTestDB(t *testing.T) {
 	t.Helper()
+	oldConfig := config.AppConfig
+	config.AppConfig = &config.Config{Panel: config.PanelConfig{BackupDir: t.TempDir()}}
+	t.Cleanup(func() { config.AppConfig = oldConfig })
 	oldDB := database.DB
 	if err := database.Open(filepath.Join(t.TempDir(), "panel.db")); err != nil {
 		t.Fatalf("open db: %v", err)
@@ -42,8 +45,8 @@ func setupBackupUsageTestDB(t *testing.T) {
 }
 
 type backupUsageResponse struct {
-	Success bool                      `json:"success"`
-	Data    models.WebsiteBackupUsage `json:"data"`
+	Success bool                   `json:"success"`
+	Data    websiteBackupUsageData `json:"data"`
 }
 
 func TestBackupUsageReturnsZeroWhenNoBackupData(t *testing.T) {

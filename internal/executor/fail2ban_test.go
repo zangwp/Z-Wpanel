@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
+
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -380,58 +380,23 @@ func TestWriteFail2banLocalRemovesDuplicatePurgeSettings(t *testing.T) {
 	}
 }
 
-func TestFail2banLoginFilterAllowsQueriesAndIgnoresCoreNonLoginActions(t *testing.T) {
-	lines := strings.Split(fail2banLoginFilterConfig, "\n")
-	var failPattern, ignorePattern string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "failregex = ") {
-			failPattern = strings.TrimPrefix(trimmed, "failregex = ")
-		}
-		if strings.HasPrefix(trimmed, "^<HOST>") && strings.Contains(trimmed, "action=(?:") {
-			ignorePattern = trimmed
+func TestFail2banLoginFilterRequiresAuthenticationFailureEvidence(t *testing.T) {
+	var pattern string
+	for _, line := range strings.Split(fail2banLoginFilterConfig, "\n") {
+		if strings.HasPrefix(line, "failregex = ") {
+			pattern = strings.TrimPrefix(line, "failregex = ")
 		}
 	}
-	failRE := regexp.MustCompile(strings.ReplaceAll(failPattern, "<HOST>", `\S+`))
-	ignorePattern = strings.ReplaceAll(ignorePattern, "<HOST>", `\S+`)
-	pythonMatch := func(pattern, value string) bool {
-		t.Helper()
-		if _, err := exec.LookPath("python3"); err != nil {
-			t.Skip("python3 is required to validate Fail2ban-compatible regex")
-		}
-		cmd := exec.Command("python3", "-c", `import re,sys;sys.exit(0 if re.search(sys.argv[1],sys.argv[2]) else 1)`, pattern, value)
-		return cmd.Run() == nil
-	}
-	line := func(target, status string) string {
-		return `203.0.113.9 - - [14/Aug/2026:12:00:00 +0800] "POST ` + target + ` HTTP/2.0" ` + status + ` 123 "-" "test"`
-	}
-	for _, target := range []string{"/wp-login.php", "/wp-login.php?x=1", "/wp-login.php?action=login", "/wp-login.php?x=1&action=unknown"} {
-		if !failRE.MatchString(line(target, "200")) || pythonMatch(ignorePattern, line(target, "200")) {
-			t.Fatalf("login failure should be counted: %s", target)
+	expression := regexp.MustCompile(strings.ReplaceAll(pattern, "<HOST>", `\S+`))
+	for _, line := range []string{"203.0.113.9 [2026-10-13T00:00:00Z] YUB_WPANEL_LOGIN_FAILED", "203.0.113.9 [] YUB_WPANEL_LOGIN_FAILED"} {
+		if !expression.MatchString(line) {
+			t.Fatalf("valid evidence missed: %s", line)
 		}
 	}
-	if failRE.MatchString(line("/wp-login.php?x=1", "302")) {
-		t.Fatal("successful login response matched failure rule")
-	}
-	for _, target := range []string{"/wp-login.php?action=lostpassword", "/wp-login.php?x=1&action=register", "/wp-login.php?action=rp&key=abc&login=user"} {
-		if !failRE.MatchString(line(target, "200")) || !pythonMatch(ignorePattern, line(target, "200")) {
-			t.Fatalf("core non-login action should be ignored: %s", target)
+	for _, line := range []string{`203.0.113.9 - - [14/Aug/2026:12:00:00 +0800] "POST /wp-login.php HTTP/2.0" 200 123`, `203.0.113.9 - - [14/Aug/2026:12:00:00 +0800] "POST /xmlrpc.php HTTP/2.0" 403 123`, "203.0.113.9 [] YUB_WPANEL_LOGIN_FAILED extra", "203.0.113.9 [] login page"} {
+		if expression.MatchString(line) {
+			t.Fatalf("request without authentication evidence was counted: %s", line)
 		}
-	}
-	for _, target := range []string{
-		"/wp-login.php?action=lostpassword&action=login",
-		"/wp-login.php?action=lostpassword&%61ction=login",
-		"/wp-login.php?action=lostpassword&action%5B%5D=login",
-	} {
-		if pythonMatch(ignorePattern, line(target, "200")) {
-			t.Fatalf("ambiguous action parameters must not be ignored: %s", target)
-		}
-	}
-	if !pythonMatch(ignorePattern, line("/wp-login.php?action=login&action=lostpassword", "200")) {
-		t.Fatal("the final safe action should be ignored")
-	}
-	if strings.Contains(fail2banLoginFilterConfig, " 444 ") {
-		t.Fatal("444 must not be included in Fail2ban filters")
 	}
 }
 
@@ -439,44 +404,6 @@ func TestFail2banLoginFilterAllowsQueriesAndIgnoresCoreNonLoginActions(t *testin
 // 只依赖状态码结构（POST ... 200/403），不要求路径斜杠数量——因为"是不是
 // wp-login.php/xmlrpc.php"这件事已经由 Nginx 侧基于规范化 $uri 的 map 判断完，
 // 写进 wp-login-security.log 的每一行本身就是候选事件，这里只做防御性结构校验。
-func TestFail2banLoginFilterIsUriAgnostic(t *testing.T) {
-	lines := strings.Split(fail2banLoginFilterConfig, "\n")
-	var failPatterns []string
-	inFailregex := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "failregex = ") {
-			failPatterns = append(failPatterns, strings.TrimPrefix(trimmed, "failregex = "))
-			inFailregex = true
-			continue
-		}
-		if strings.HasPrefix(trimmed, "ignoreregex") {
-			inFailregex = false
-			continue
-		}
-		if inFailregex && trimmed != "" {
-			failPatterns = append(failPatterns, trimmed)
-		}
-	}
-	if len(failPatterns) != 2 {
-		t.Fatalf("expected exactly 2 failregex lines (200 + 403), got %d: %v", len(failPatterns), failPatterns)
-	}
-	loginRE := regexp.MustCompile(strings.ReplaceAll(failPatterns[0], "<HOST>", `\S+`))
-	xmlrpcRE := regexp.MustCompile(strings.ReplaceAll(failPatterns[1], "<HOST>", `\S+`))
-	line := func(target, status string) string {
-		return `203.0.113.9 - - [14/Aug/2026:12:00:00 +0800] "POST ` + target + ` HTTP/2.0" ` + status + ` 123 "-" "test"`
-	}
-	for _, target := range []string{"/wp-login.php", "//wp-login.php", "///wp-login.php", "/%2Fwp-login.php"} {
-		if !loginRE.MatchString(line(target, "200")) {
-			t.Fatalf("login failregex should not care about slash count: %s", target)
-		}
-	}
-	for _, target := range []string{"/xmlrpc.php", "//xmlrpc.php", "///xmlrpc.php"} {
-		if !xmlrpcRE.MatchString(line(target, "403")) {
-			t.Fatalf("xmlrpc failregex should not care about slash count: %s", target)
-		}
-	}
-}
 
 // TestFail2banWebFilterNoLongerCountsLoginOrXmlrpc 防止未来有人把登录/XML-RPC
 // 检测重新加回 yubwpanel 的 filter，导致同一次失败登录被 yubwpanel 和 yubwpanel-login

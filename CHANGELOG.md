@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.0 — 2026-10-13
+
+- Add coordinated whole-site recovery points and full-file restore, restricted database import accounts, verified safety copies, recovery journals, and shared site operation locks adapted to Nginx/PHP-FPM.
+- Add account MFA, recovery codes, session controls and security audit, plus encrypted per-site Cloudflare WAF configuration, standby rules and automatic hostname-scoped blacklist synchronization.
+- Improve custom-port editing and SSH migration feedback, website security summaries, WordPress panel access, authentication evidence and notification settings.
+- Bound and share dashboard/service probes, cancel obsolete page requests, retain editing drafts, and load page-specific translations.
+- Use only the existing dark theme. Preserve Nginx/PHP-FPM, FastCGI cache, image optimization, site migration, installed paths and release-signing identity.
+- Add schema upgrades 1.0.67/1.0.68. Use the signed installer's repair mode to synchronize installed assets; retain account-mfa.key and cloudflare-security.key separately from database backups.
+
 ## v2.3.3 — 2026-10-05
 
 - Complete missing shared panel layouts from OLS: grouped responsive navigation, website maintenance tabs, site detail sections, settings sections, update feedback, alert filters and contextual help.

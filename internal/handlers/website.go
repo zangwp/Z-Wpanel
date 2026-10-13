@@ -55,12 +55,13 @@ func wpOptimizationSiteLock(id int) *sync.Mutex {
 }
 
 type wpOptimizationConfig struct {
-	disableUpdates     bool
-	disableFileEditing bool
-	debugEnabled       bool
-	debugDisplay       *bool
-	postRevisions      int
-	memoryLimit        string
+	disableApplicationPasswords bool
+	disableUpdates              bool
+	disableFileEditing          bool
+	debugEnabled                bool
+	debugDisplay                *bool
+	postRevisions               int
+	memoryLimit                 string
 }
 
 func applyWPOptimizationConfig(site *models.Website, cfg wpOptimizationConfig) (bool, func() error, error) {
@@ -72,12 +73,13 @@ func applyWPOptimizationConfig(site *models.Website, cfg wpOptimizationConfig) (
 		debugDisplay = *cfg.debugDisplay
 	}
 	rollback, err := executor.ApplyWPOptimizationsReversible(site.WebRoot, executor.WPOptimizations{
-		DisableUpdates:     cfg.disableUpdates,
-		DisableFileEditing: cfg.disableFileEditing,
-		WPDebug:            cfg.debugEnabled,
-		WPDebugDisplay:     debugDisplay,
-		WPPostRevisions:    cfg.postRevisions,
-		WPMemoryLimit:      cfg.memoryLimit,
+		DisableApplicationPasswords: cfg.disableApplicationPasswords,
+		DisableUpdates:              cfg.disableUpdates,
+		DisableFileEditing:          cfg.disableFileEditing,
+		WPDebug:                     cfg.debugEnabled,
+		WPDebugDisplay:              debugDisplay,
+		WPPostRevisions:             cfg.postRevisions,
+		WPMemoryLimit:               cfg.memoryLimit,
 	})
 	return debugDisplay, rollback, err
 }
@@ -612,6 +614,9 @@ func (h *WebsiteHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	if rejectWebsiteBackupLifecycle(c, site) {
+		return
+	}
 	payload := &executor.DeleteSitePayload{Site: site}
 	task, queued := enqueueTask(c, executor.TaskDeleteSite, payload)
 	if !queued {
@@ -629,18 +634,27 @@ func (h *WebsiteHandler) Delete(c *gin.Context) {
 // 关联计划任务），供前端在删除网站前提醒管理员：面板不会自动删除备份文件，
 // 但会在删除网站时自动删除仍关联该网站的计划任务。
 func (h *WebsiteHandler) BackupUsage(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("无效的网站ID"))
 		return
 	}
-	if getWebsiteByID(id) == nil {
+	site := getWebsiteByID(id)
+	if site == nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse("网站不存在"))
 		return
 	}
 
 	db := database.GetDB()
 	usage := models.WebsiteBackupUsage{CronJobs: []models.BackupCronJobRef{}}
+	backupCtx, backupCancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	siteUsage, backupErr := collectWebsiteSiteBackupUsage(backupCtx, site)
+	backupCancel()
+	if backupErr != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(i18n.TE(c.Request, "website.delete_backup_check_failed_blocked", i18n.P{"domain": site.Domain})))
+		return
+	}
 
 	if err := db.QueryRow(`SELECT COUNT(*) FROM db_backups WHERE site_id = ?`, id).Scan(&usage.DBBackupCount); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse("查询数据库备份数量失败"))
@@ -666,13 +680,20 @@ func (h *WebsiteHandler) BackupUsage(c *gin.Context) {
 		var ref models.BackupCronJobRef
 		if err := rows.Scan(&ref.ID, &ref.Name); err != nil {
 			log.Printf("备份使用量检查: 扫描计划任务行失败 site=%d: %v", id, err)
-			continue
+			rows.Close()
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse("查询关联计划任务失败"))
+			return
 		}
 		usage.CronJobs = append(usage.CronJobs, ref)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("查询关联计划任务失败"))
+		return
+	}
 	rows.Close()
 
-	c.JSON(http.StatusOK, models.SuccessResponse(usage))
+	c.JSON(http.StatusOK, models.SuccessResponse(websiteBackupUsageData{WebsiteBackupUsage: usage, websiteSiteBackupUsage: siteUsage}))
 }
 
 func (h *WebsiteHandler) ToggleStatus(c *gin.Context) {
@@ -1107,6 +1128,9 @@ func (h *WebsiteHandler) UpdateDomains(c *gin.Context) {
 	}
 
 	if targetDomain != site.Domain {
+		if rejectWebsiteBackupLifecycle(c, site) {
+			return
+		}
 		if conflict, existing := isAliasConflicting(targetDomain, site.ID); conflict {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse("域名 "+targetDomain+" 已被站点 "+existing+" 使用"))
 			return
@@ -2462,12 +2486,13 @@ func (h *WebsiteHandler) SaveWPOptimizations(c *gin.Context) {
 	}
 
 	wpDebugDisplay, rollbackWPConfig, err := applyWPOptimizationConfig(site, wpOptimizationConfig{
-		disableUpdates:     req.DisableWPUpdates,
-		disableFileEditing: req.DisableFileEditing,
-		debugEnabled:       req.WPDebugEnabled,
-		debugDisplay:       req.WPDebugDisplay,
-		postRevisions:      req.WPPostRevisions,
-		memoryLimit:        req.WPMemoryLimit,
+		disableUpdates:              req.DisableWPUpdates,
+		disableApplicationPasswords: req.DisableApplicationPasswords,
+		disableFileEditing:          req.DisableFileEditing,
+		debugEnabled:                req.WPDebugEnabled,
+		debugDisplay:                req.WPDebugDisplay,
+		postRevisions:               req.WPPostRevisions,
+		memoryLimit:                 req.WPMemoryLimit,
 	})
 	if err != nil {
 		recordHandlerOperationLog("wp_optimizations", domain, "failed", "写入 wp-config.php 失败: "+err.Error())

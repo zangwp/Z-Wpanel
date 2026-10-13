@@ -108,6 +108,11 @@ log_format yubwpanel_combined '$remote_addr - $remote_user [$time_local] "$reque
                              '$status $body_bytes_sent "$http_referer" '
                              '"$http_user_agent" peer=$realip_remote_addr';
 
+log_format yubwpanel_sqli_block '$remote_addr - $remote_user [$time_local] "$request" '
+                              '$status $body_bytes_sent "$http_referer" '
+                              '"$http_user_agent" peer=$realip_remote_addr '
+                              'yub_security="sqli" yub_autoban="1"';
+
 map $status $wp_loggable {
     ~^[45]  1;
     default 0;
@@ -853,7 +858,7 @@ server {
 	    {{end}}
     access_log /www/wwwlogs/{{.Domain}}/wp-security.log yubwpanel_combined if=$wp_security_loggable;
     access_log /www/wwwlogs/{{.Domain}}/wp-login-security.log yubwpanel_combined if=$wp_login_attempt_loggable;
-    {{if .SQLiAutoBanLog}}access_log /www/wwwlogs/{{.Domain}}/wp-sqli-security.log yubwpanel_combined if=$wp_sqli_block_hit;{{end}}
+    {{if .SQLiAutoBanLog}}access_log /www/wwwlogs/{{.Domain}}/wp-sqli-security.log yubwpanel_sqli_block if=$wp_sqli_block_hit;{{end}}
 
     {{if .FCacheEnabled}}
     set $wp_skip_cache 0;
@@ -1071,7 +1076,7 @@ server {
 	    {{end}}
     access_log /www/wwwlogs/{{.Domain}}/wp-security.log yubwpanel_combined if=$wp_security_loggable;
     access_log /www/wwwlogs/{{.Domain}}/wp-login-security.log yubwpanel_combined if=$wp_login_attempt_loggable;
-    {{if .SQLiAutoBanLog}}access_log /www/wwwlogs/{{.Domain}}/wp-sqli-security.log yubwpanel_combined if=$wp_sqli_block_hit;{{end}}
+    {{if .SQLiAutoBanLog}}access_log /www/wwwlogs/{{.Domain}}/wp-sqli-security.log yubwpanel_sqli_block if=$wp_sqli_block_hit;{{end}}
 
     {{if .FCacheEnabled}}
     set $wp_skip_cache 0;

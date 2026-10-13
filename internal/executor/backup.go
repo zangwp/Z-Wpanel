@@ -23,14 +23,31 @@ import (
 
 const databaseBackupCommandTimeout = 6 * time.Hour
 
+var databaseBackupCommand = exec.CommandContext
+var restoreBackupPassword = readMariaDBPassword
+var databaseBackupPassword = readMariaDBPassword
+
 func executeCreateBackup(task *Task) TaskResult {
 	payload, ok := task.Payload.(*CreateBackupPayload)
-	if !ok {
+	if !ok || payload == nil || payload.Site == nil {
 		return TaskResult{Success: false, Message: "任务参数类型错误"}
 	}
 
 	site := payload.Site
+	if payload.SiteOperation != nil {
+		if !databaseBackupSiteOperationOwned(site.ID, payload.SiteOperation) {
+			return TaskResult{Success: false, Message: "备份失败: 原网站操作归属已失效"}
+		}
+	} else {
+		if !TryAcquireSiteOpLock(site.ID, "database_backup") {
+			return TaskResult{Success: false, Message: "网站维护操作尚未结束，数据库备份未执行"}
+		}
+		defer ReleaseSiteOpLock(site.ID)
+	}
 	cfg := config.AppConfig
+	if cfg == nil || strings.TrimSpace(cfg.Panel.BackupDir) == "" {
+		return TaskResult{Success: false, Message: "备份目录未配置"}
+	}
 
 	backupDir := filepath.Join(cfg.Panel.BackupDir, site.Domain, "db")
 	os.MkdirAll(backupDir, 0700)
@@ -39,7 +56,7 @@ func executeCreateBackup(task *Task) TaskResult {
 	filename := fmt.Sprintf("%s_%s.sql.gz", site.Domain, ts)
 	filePath := filepath.Join(backupDir, filename)
 
-	dbPass := readMariaDBPassword()
+	dbPass := databaseBackupPassword()
 	if dbPass == "" {
 		return TaskResult{Success: false, Message: "无法读取 MariaDB root 密码"}
 	}
@@ -75,15 +92,27 @@ func executeCreateBackup(task *Task) TaskResult {
 
 func executeRestoreBackup(task *Task) TaskResult {
 	payload, ok := task.Payload.(*RestoreBackupPayload)
-	if !ok {
+	if !ok || payload == nil {
 		return TaskResult{Success: false, Message: "任务参数类型错误"}
+	}
+	// Ownership transfers from the upload handler at queue admission, including
+	// when this task subsequently fails a site, permission or credential check.
+	if payload.RemoveFileAfter && payload.FilePath != "" {
+		uploadPath, valid := ownedRestoreUploadPath(payload.FilePath)
+		if !valid {
+			return TaskResult{Message: "恢复失败: 上传文件路径不合法"}
+		}
+		defer os.Remove(uploadPath)
 	}
 
 	site := payload.Site
 	if site == nil {
 		return TaskResult{Success: false, Message: "恢复失败: 网站不存在"}
 	}
-	if payload.UpdateBackupPath == "" {
+	if payload.UpdateBackupPath != "" {
+		// The update-backup handler transferred its already-held site lock.
+		defer ReleaseSiteOpLock(site.ID)
+	} else {
 		if !TryAcquireSiteOpLock(site.ID, "restore") {
 			return TaskResult{Success: false, Message: "网站维护操作尚未结束"}
 		}
@@ -94,19 +123,25 @@ func executeRestoreBackup(task *Task) TaskResult {
 	} else if blocked {
 		return TaskResult{Success: false, Message: "该网站已开启 AI 开发访问，请先关闭授权"}
 	}
-	if payload.UpdateBackupPath != "" && site != nil {
-		defer ReleaseSiteOpLock(site.ID)
+	guardCtx, guardCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	currentSite, guardErr := validateDatabaseRestoreSite(guardCtx, database.GetDB(), site, payload.UpdateBackupPath != "")
+	guardCancel()
+	if guardErr != nil {
+		return TaskResult{Success: false, Message: "恢复前网站检查失败: " + guardErr.Error()}
 	}
-	dbPass := readMariaDBPassword()
+	site = currentSite
+	cfg := config.AppConfig
+	if cfg == nil || strings.TrimSpace(cfg.Panel.BackupDir) == "" {
+		return TaskResult{Success: false, Message: "恢复失败: 备份目录未配置"}
+	}
+	dbPass := restoreBackupPassword()
 	if dbPass == "" {
 		return TaskResult{Success: false, Message: "无法读取 MariaDB root 密码"}
 	}
 
 	var filePath string
 	if payload.UpdateBackupPath != "" {
-		cfg := config.AppConfig
-		if cfg == nil || strings.TrimSpace(cfg.Panel.BackupDir) == "" ||
-			!wpUpdateSHA256Pattern.MatchString(payload.ExpectedSHA256) {
+		if !wpUpdateSHA256Pattern.MatchString(payload.ExpectedSHA256) {
 			return TaskResult{Success: false, Message: "恢复失败: 更新备份参数不合法"}
 		}
 		artifactRoot := filepath.Join(filepath.Clean(cfg.Panel.BackupDir), "wp-updates")
@@ -124,38 +159,193 @@ func executeRestoreBackup(task *Task) TaskResult {
 		}
 		filePath = cleanPath
 	} else if payload.FilePath != "" {
-		cleanPath := filepath.Clean(payload.FilePath)
-		if !strings.HasPrefix(cleanPath, "/tmp/") {
+		cleanPath, valid := ownedRestoreUploadPath(payload.FilePath)
+		if !valid {
 			return TaskResult{Success: false, Message: "恢复失败: 文件路径不合法"}
 		}
 		filePath = cleanPath
 	} else {
-		cfg := config.AppConfig
 		backupDir := filepath.Join(cfg.Panel.BackupDir, site.Domain, "db")
 		filePath = filepath.Join(backupDir, payload.Filename)
 	}
-	if payload.RemoveFileAfter {
-		defer os.Remove(filePath)
-	}
-
 	if err := validateRestoreBackupFile(filePath); err != nil {
 		return TaskResult{Success: false, Message: "恢复文件校验失败: " + err.Error()}
 	}
-	if err := ClearDatabaseTables(int64(site.ID), site.DBName, dbPass); err != nil {
-		return TaskResult{Success: false, Message: "清空数据库失败: " + err.Error()}
-	}
+	return restoreDatabaseSafely(int64(site.ID), site.DBName, dbPass, filePath,
+		filepath.Join(cfg.Panel.BackupDir, site.Domain, "restore-safety"))
+}
 
+func ownedRestoreUploadPath(path string) (string, bool) {
+	clean := filepath.Clean(path)
+	// Match the upload handler's CreateTemp contract; a malformed internal task
+	// must never gain deletion ownership of an arbitrary path.
+	return clean, filepath.IsAbs(clean) && filepath.Dir(clean) == filepath.Clean(os.TempDir()) &&
+		strings.HasPrefix(filepath.Base(clean), "yubwpanel_upload_")
+}
+
+func restoreDatabaseFile(filePath, dbName, dbPass string) TaskResult {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	if ext == ".gz" {
-		return restoreFromGz(filePath, site.DBName, dbPass)
+		return restoreFromGz(filePath, dbName, dbPass)
 	}
 	if ext == ".sql" {
-		return restoreFromSql(filePath, site.DBName, dbPass)
+		return restoreFromSql(filePath, dbName, dbPass)
 	}
 	if ext == ".zip" {
-		return restoreFromZip(filePath, site.DBName, dbPass)
+		return restoreFromZip(filePath, dbName, dbPass)
 	}
 	return TaskResult{Success: false, Message: "不支持的备份文件格式"}
+}
+
+// Keep safety snapshots outside normal backup retention. A concurrent scheduled
+// backup must never remove the only rollback copy while an import is in progress.
+func restoreDatabaseSafely(siteID int64, dbName, dbPass, source, safetyRoot string) TaskResult {
+	if err := os.MkdirAll(safetyRoot, 0700); err != nil {
+		return TaskResult{Message: "创建恢复前备份目录失败: " + err.Error()}
+	}
+	dir, err := os.MkdirTemp(safetyRoot, "restore-*")
+	if err != nil {
+		return TaskResult{Message: "创建恢复前备份目录失败: " + err.Error()}
+	}
+	snapshot := filepath.Join(dir, "before-restore.sql.gz")
+	keepSnapshot := false
+	defer func() {
+		if !keepSnapshot {
+			_ = os.RemoveAll(dir)
+		}
+	}()
+	if err := dumpDatabaseToGzipWithOptions(dbName, dbPass, snapshot, "--routines", "--events", "--triggers"); err != nil {
+		return TaskResult{Message: "创建恢复前备份失败，数据库未修改: " + err.Error()}
+	}
+	if err := verifyDatabaseSnapshot(snapshot); err != nil {
+		return TaskResult{Message: "恢复前备份校验失败，数据库未修改: " + err.Error()}
+	}
+
+	// Preserve the verified copy if execution panics or rollback itself fails.
+	keepSnapshot = true
+	// The dump may take time. Recheck the selected site's database binding
+	// before creating an import account or starting any other SQL operation.
+	guardCtx, guardCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	guardErr := verifyDatabaseRestoreBinding(guardCtx, database.GetDB(), siteID, dbName)
+	guardCancel()
+	if guardErr != nil {
+		return TaskResult{Message: guardErr.Error() + "；数据库未修改；恢复前备份已保留: " + snapshot}
+	}
+	databaseChanged := false
+	result := restoreDatabaseFileBefore(source, dbName, dbPass, func() error {
+		// This callback runs only after isolated account/permission checks
+		// succeed. A setup or ownership failure leaves original data intact.
+		databaseChanged = true
+		return clearRestoreDatabase(siteID, dbName, dbPass)
+	})
+	if result.Success {
+		keepSnapshot = false
+		return result
+	}
+	if !databaseChanged {
+		keepSnapshot = false
+		result.Message += "；数据库未修改"
+		return result
+	}
+	if err := clearRestoreDatabase(siteID, dbName, dbPass); err != nil {
+		return TaskResult{Message: result.Message + "；自动回滚失败: " + err.Error() + "；恢复前备份已保留: " + snapshot}
+	}
+	rollback := restoreDatabaseSnapshot(snapshot, dbName, dbPass)
+	if !rollback.Success {
+		return TaskResult{Message: result.Message + "；自动回滚失败: " + rollback.Message + "；恢复前备份已保留: " + snapshot}
+	}
+	keepSnapshot = false
+	return TaskResult{Message: result.Message + "；已自动恢复到操作前的数据库"}
+}
+
+func restoreDatabaseFileBefore(path, dbName, password string, before func() error) TaskResult {
+	file, err := os.Open(path)
+	if err != nil {
+		return TaskResult{Message: "读取备份文件失败"}
+	}
+	defer file.Close()
+	var src io.Reader = file
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".gz":
+		gz, err := gzip.NewReader(file)
+		if err != nil {
+			return TaskResult{Message: "gzip 备份损坏"}
+		}
+		defer gz.Close()
+		src = gz
+	case ".zip":
+		info, err := file.Stat()
+		if err != nil {
+			return TaskResult{Message: "读取 zip 备份失败"}
+		}
+		archive, err := zip.NewReader(file, info.Size())
+		if err != nil {
+			return TaskResult{Message: "zip 备份损坏"}
+		}
+		var selected *zip.File
+		for _, entry := range archive.File {
+			if !entry.FileInfo().IsDir() && strings.HasSuffix(strings.ToLower(entry.Name), ".sql") {
+				selected = entry
+				break
+			}
+		}
+		if selected == nil {
+			return TaskResult{Message: "zip 文件中未找到 .sql 文件"}
+		}
+		reader, err := selected.Open()
+		if err != nil {
+			return TaskResult{Message: "读取 zip 内 SQL 失败"}
+		}
+		defer reader.Close()
+		src = reader
+	case ".sql":
+	default:
+		return TaskResult{Message: "不支持的备份文件格式"}
+	}
+	return restoreSQLReaderWith(src, dbName, password, func(dst io.Writer, src io.Reader) error {
+		if err := before(); err != nil {
+			return err
+		}
+		return filterRestoreSQLBuffered(dst, src)
+	})
+}
+
+func verifyDatabaseSnapshot(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	// Read to EOF to verify the gzip checksum, including snapshots of empty DBs.
+	n, err := io.Copy(io.Discard, gz)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New("恢复前备份为空")
+	}
+	return nil
+}
+
+func restoreDatabaseSnapshot(path, dbName, dbPass string) TaskResult {
+	f, err := os.Open(path)
+	if err != nil {
+		return TaskResult{Message: err.Error()}
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return TaskResult{Message: err.Error()}
+	}
+	defer gz.Close()
+	// This file was generated by our own mysqldump, not supplied by an upload.
+	// Preserve its triggers and view definers when restoring the original state.
+	return restoreSQLReader(gz, dbName, dbPass)
 }
 
 func restoreFromGz(filePath, dbName, dbPass string) TaskResult {
@@ -214,10 +404,37 @@ func restoreFromZip(filePath, dbName, dbPass string) TaskResult {
 }
 
 func restoreSQLReader(r io.Reader, dbName, dbPass string) TaskResult {
+	return restoreSQLReaderWith(r, dbName, dbPass, filterRestoreSQLBuffered)
+}
+
+func restoreSQLReaderWith(r io.Reader, dbName, dbPass string, copySQL func(io.Writer, io.Reader) error) TaskResult {
 	ctx, cancel := context.WithTimeout(context.Background(), databaseBackupCommandTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "mysql", "-u", "root", dbName)
-	cmd.Env = append(os.Environ(), "MYSQL_PWD="+dbPass)
+	return importDatabaseSQL(ctx, databaseBackupCommand, "mysql", r, dbName, dbPass, copySQL)
+}
+
+func importDatabaseSQL(ctx context.Context, command databaseImportCommand, client string, r io.Reader, dbName, dbPass string, copySQL func(io.Writer, io.Reader) error) (result TaskResult) {
+	release, err := lockDatabaseImport(ctx, dbName)
+	if err != nil {
+		return TaskResult{Message: "数据库导入等待已取消"}
+	}
+	defer release()
+	if err := ctx.Err(); err != nil {
+		return TaskResult{Message: "数据库导入已取消"}
+	}
+	identity, password, err := prepareDatabaseImportIdentity(ctx, command, client, dbName, dbPass)
+	if err != nil {
+		return TaskResult{Message: "恢复失败，无法建立仅限所选数据库的导入身份: " + err.Error()}
+	}
+	defer func() {
+		if err := finishDatabaseImportIdentity(command, client, dbPass, identity); err != nil {
+			result.Success = false
+			result.Message = "恢复未完成确认: " + err.Error()
+		}
+	}()
+	cmd := command(ctx, client, databaseImportClientArgs(identity.User, dbName)...)
+	cmd.Env = databaseImportEnvironment(password)
+	configureBackupCommandCancellation(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return TaskResult{Success: false, Message: fmt.Sprintf("创建导入管道失败: %v", err)}
@@ -234,7 +451,7 @@ func restoreSQLReader(r io.Reader, dbName, dbPass string) TaskResult {
 		_ = cmd.Wait()
 		return TaskResult{Success: false, Message: "恢复失败，初始化 mysql 导入失败: " + err.Error()}
 	}
-	copyErr := filterRestoreSQLBuffered(stdin, r)
+	copyErr := copySQL(stdin, r)
 	if copyErr == nil {
 		_, copyErr = io.WriteString(stdin, "\nSET FOREIGN_KEY_CHECKS=1;\n")
 	}
@@ -434,8 +651,21 @@ const restoreSQLWriteBufferSize = 256 * 1024
 // the underlying destination after this returns.
 func filterRestoreSQLBuffered(dst io.Writer, src io.Reader) error {
 	buffered := bufio.NewWriterSize(dst, restoreSQLWriteBufferSize)
-	if err := writeSanitizedRestoreSQL(buffered, src); err != nil {
+	reader, writer := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		err := rebindDatabaseRestoreDefiners(writer, src)
+		_ = writer.CloseWithError(err)
+		done <- err
+	}()
+	err := writeSanitizedRestoreSQL(buffered, reader)
+	_ = reader.CloseWithError(err)
+	transformErr := <-done
+	if err != nil {
 		return err
+	}
+	if transformErr != nil {
+		return transformErr
 	}
 	return buffered.Flush()
 }
@@ -565,9 +795,6 @@ func writeSanitizedRestoreSQL(dst io.Writer, src io.Reader) error {
 }
 
 func restoreStatementDecision(prefix string) (skip, decided bool) {
-	if strings.Contains(strings.ToUpper(prefix), "DEFINER=") {
-		return true, true
-	}
 	normalized := normalizeSQLPrefix(prefix)
 	if normalized == "" {
 		return false, false
@@ -583,10 +810,10 @@ func restoreStatementDecision(prefix string) (skip, decided bool) {
 		if len(fields) < 2 {
 			return false, false
 		}
-		if fields[1] == "DATABASE" || strings.HasPrefix(fields[1], "DEFINER=") {
+		if fields[1] == "DATABASE" {
 			return true, true
 		}
-		if strings.HasPrefix("DATABASE", fields[1]) || strings.HasPrefix("DEFINER=", fields[1]) {
+		if strings.HasPrefix("DATABASE", fields[1]) {
 			return false, false
 		}
 		return false, true
@@ -656,6 +883,14 @@ func normalizeSQLPrefix(s string) string {
 
 // ClearDatabaseTables 清空指定数据库中的所有表（保留数据库本身）
 func ClearDatabaseTables(siteID int64, dbName, dbPass string) error {
+	return clearDatabaseObjects(siteID, dbName, dbPass, false)
+}
+
+func clearRestoreDatabase(siteID int64, dbName, dbPass string) error {
+	return clearDatabaseObjects(siteID, dbName, dbPass, true)
+}
+
+func clearDatabaseObjects(siteID int64, dbName, dbPass string, allObjects bool) error {
 	if siteID <= 0 {
 		return fmt.Errorf("invalid site ID")
 	}
@@ -663,6 +898,12 @@ func ClearDatabaseTables(siteID int64, dbName, dbPass string) error {
 		return fmt.Errorf("检查 AI 开发授权失败: %w", err)
 	} else if blocked {
 		return fmt.Errorf("该网站已开启 AI 开发访问，请先关闭授权")
+	}
+	guardCtx, guardCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	guardErr := verifyDatabaseRestoreBinding(guardCtx, database.GetDB(), siteID, dbName)
+	guardCancel()
+	if guardErr != nil {
+		return guardErr
 	}
 	if !isValidMySQLIdentifier(dbName) {
 		return fmt.Errorf("invalid database name")
@@ -673,16 +914,19 @@ func ClearDatabaseTables(siteID int64, dbName, dbPass string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), databaseBackupCommandTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "mysql", "-u", "root", "-B", "-N", "-e",
-		fmt.Sprintf("SELECT CONCAT('DROP TABLE IF EXISTS `', REPLACE(TABLE_NAME, '`', '``'), '`;') FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '%s' AND TABLE_TYPE = 'BASE TABLE'", dbName))
-	cmd.Env = append(os.Environ(), "MYSQL_PWD="+dbPass)
+	query := fmt.Sprintf("SELECT CONCAT('DROP TABLE IF EXISTS `', REPLACE(TABLE_NAME, '`', '``'), '`;') FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '%s' AND TABLE_TYPE = 'BASE TABLE'", dbName)
+	if allObjects {
+		query = databaseRestoreDropQuery(dbName)
+	}
+	cmd := databaseBackupCommand(ctx, "mysql", databaseImportClientArgs("root", "--raw", "-N", "-e", query)...)
+	cmd.Env = databaseImportEnvironment(dbPass)
 	dropSQL, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("获取表列表失败: %s", string(dropSQL))
 	}
 
-	mysqlCmd := exec.CommandContext(ctx, "mysql", "-u", "root", dbName)
-	mysqlCmd.Env = append(os.Environ(), "MYSQL_PWD="+dbPass)
+	mysqlCmd := databaseBackupCommand(ctx, "mysql", databaseImportClientArgs("root", dbName)...)
+	mysqlCmd.Env = databaseImportEnvironment(dbPass)
 	stdin, err := mysqlCmd.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("准备数据库操作失败")
@@ -692,17 +936,24 @@ func ClearDatabaseTables(siteID int64, dbName, dbPass string) error {
 	if err := mysqlCmd.Start(); err != nil {
 		return fmt.Errorf("启动数据库操作失败")
 	}
-	fmt.Fprintf(stdin, "SET FOREIGN_KEY_CHECKS = 0;\n%s\nSET FOREIGN_KEY_CHECKS = 1;\n", string(dropSQL))
-	stdin.Close()
-	if err := mysqlCmd.Wait(); err != nil {
+	_, writeErr := fmt.Fprintf(stdin, "SET FOREIGN_KEY_CHECKS = 0;\n%s\nSET FOREIGN_KEY_CHECKS = 1;\n", string(dropSQL))
+	closeErr := stdin.Close()
+	waitErr := mysqlCmd.Wait()
+	if writeErr != nil || closeErr != nil || waitErr != nil {
 		return fmt.Errorf("清空数据库失败: %s", stderr.String())
 	}
 	return nil
 }
 
+type automaticDatabaseBackup struct {
+	siteID    int
+	keepCount int
+	domain    string
+	dbName    string
+}
+
 func executeAutoBackups() {
 	db := database.GetDB()
-	cfg := config.AppConfig
 
 	rows, err := db.Query(`SELECT bs.site_id, bs.keep_count, w.domain, w.db_name FROM backup_settings bs
 		JOIN websites w ON w.id = bs.site_id WHERE bs.enabled = 1 AND w.status = 'active'
@@ -711,22 +962,16 @@ func executeAutoBackups() {
 		log.Printf("自动备份: 查询 backup_settings 失败: %v", err)
 		return
 	}
-	type backupTask struct {
-		siteID    int
-		keepCount int
-		domain    string
-		dbName    string
-	}
-	var tasks []backupTask
+	var tasks []automaticDatabaseBackup
 	for rows.Next() {
-		var t backupTask
+		var t automaticDatabaseBackup
 		if rows.Scan(&t.siteID, &t.keepCount, &t.domain, &t.dbName) == nil {
 			tasks = append(tasks, t)
 		}
 	}
 	rows.Close()
 
-	dbPass := readMariaDBPassword()
+	dbPass := databaseBackupPassword()
 	if dbPass == "" {
 		log.Printf("自动备份: 无法读取 MariaDB root 密码，跳过")
 		return
@@ -734,55 +979,67 @@ func executeAutoBackups() {
 
 	count := 0
 	failCount := 0
+	skipCount := 0
 	for _, t := range tasks {
-		siteID := t.siteID
-		keepCount := t.keepCount
-		domain := t.domain
-		dbName := t.dbName
-		allowed, _, checkErr := siteScheduledWorkAllowed(siteID)
-		if checkErr != nil {
-			log.Printf("自动备份: 检查网站运行状态失败 [%s]: %v", domain, checkErr)
+		completed, skipped, err := executeAutomaticDatabaseBackup(t, dbPass)
+		if err != nil {
+			log.Printf("自动备份失败 [%s]: %v", t.domain, err)
 			failCount++
 			continue
 		}
-		if !allowed {
+		if skipped != "" {
+			log.Printf("自动备份跳过 [%s]: %s", t.domain, skipped)
+			skipCount++
 			continue
 		}
-
-		backupDir := filepath.Join(cfg.Panel.BackupDir, domain, "db")
-		os.MkdirAll(backupDir, 0700)
-
-		ts := time.Now().Format("20060102_150405")
-		filename := fmt.Sprintf("%s_%s.sql.gz", domain, ts)
-		filePath := filepath.Join(backupDir, filename)
-
-		if err := dumpDatabaseToGzip(dbName, dbPass, filePath); err != nil {
-			log.Printf("自动备份失败 [%s]: %v", domain, err)
-			failCount++
-			continue
+		if completed {
+			count++
 		}
-
-		info, _ := os.Stat(filePath)
-		size := int64(0)
-		if info != nil {
-			size = info.Size()
-		}
-		if _, err = db.Exec(`INSERT INTO db_backups (site_id, filename, file_size, db_name, auto) VALUES (?, ?, ?, ?, 1)`,
-			siteID, filename, size, dbName); err != nil {
-			log.Printf("自动备份: 记录写入 db_backups 失败 [%s]: %v", domain, err)
-			os.Remove(filePath)
-			failCount++
-			continue
-		}
-
-		SyncBackupToRemote(filePath, BackupSourceDB, siteID, filename)
-		if keepCount <= 0 {
-			keepCount = 7
-		}
-		cleanupOldBackups(siteID, domain, keepCount)
-		count++
 	}
-	log.Printf("自动备份完成: 成功 %d, 失败 %d", count, failCount)
+	log.Printf("自动备份完成: 成功 %d, 失败 %d, 跳过 %d", count, failCount, skipCount)
+}
+
+// Only the independent scheduler owns this slot. Lower-level dump helpers stay
+// ungated because full-site/update safety snapshots already hold a site slot.
+func executeAutomaticDatabaseBackup(task automaticDatabaseBackup, dbPass string) (bool, string, error) {
+	if !TryAcquireSiteOpLock(task.siteID, "automatic_database_backup") {
+		return false, "site_operation_busy", nil
+	}
+	defer ReleaseSiteOpLock(task.siteID)
+	allowed, reason, err := siteScheduledWorkAllowed(task.siteID)
+	if err != nil {
+		return false, "", fmt.Errorf("检查网站运行状态失败: %w", err)
+	}
+	if !allowed {
+		return false, "site_runtime_suspended:" + reason, nil
+	}
+	cfg := config.AppConfig
+	if cfg == nil || strings.TrimSpace(cfg.Panel.BackupDir) == "" {
+		return false, "", errors.New("备份目录未配置")
+	}
+	backupDir := filepath.Join(cfg.Panel.BackupDir, task.domain, "db")
+	filename := fmt.Sprintf("%s_%s.sql.gz", task.domain, time.Now().Format("20060102_150405"))
+	filePath := filepath.Join(backupDir, filename)
+	if err := dumpDatabaseToGzip(task.dbName, dbPass, filePath); err != nil {
+		return false, "", err
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		os.Remove(filePath)
+		return false, "", fmt.Errorf("读取完成的备份文件失败: %w", err)
+	}
+	if _, err := database.GetDB().Exec(`INSERT INTO db_backups (site_id, filename, file_size, db_name, auto) VALUES (?, ?, ?, ?, 1)`,
+		task.siteID, filename, info.Size(), task.dbName); err != nil {
+		os.Remove(filePath)
+		return false, "", fmt.Errorf("保存备份记录失败: %w", err)
+	}
+	SyncBackupToRemote(filePath, BackupSourceDB, task.siteID, filename)
+	keepCount := task.keepCount
+	if keepCount <= 0 {
+		keepCount = 7
+	}
+	cleanupOldBackups(task.siteID, task.domain, keepCount)
+	return true, "", nil
 }
 
 func getKeepCount(siteID int) int {
@@ -794,6 +1051,12 @@ func getKeepCount(siteID int) int {
 }
 
 func dumpDatabaseToGzip(dbName, dbPass, filePath string) error {
+	// Restore now replaces all schema objects; new ordinary/update backups
+	// must retain routines/events/triggers as well as tables and views.
+	return dumpDatabaseToGzipWithOptions(dbName, dbPass, filePath, "--routines", "--events", "--triggers")
+}
+
+func dumpDatabaseToGzipWithOptions(dbName, dbPass, filePath string, extraOptions ...string) error {
 	if !isValidMySQLIdentifier(dbName) {
 		return fmt.Errorf("数据库名异常，已拒绝执行")
 	}
@@ -819,8 +1082,27 @@ func dumpDatabaseToGzip(dbName, dbPass, filePath string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), databaseBackupCommandTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "mysqldump", "-u", "root", dbName)
+	args := append([]string{"-u", "root"}, extraOptions...)
+	args = append(args, dbName)
+	cmd := databaseBackupCommand(ctx, "mysqldump", args...)
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+dbPass)
+	if err := streamDatabaseDumpToGzip(ctx, cancel, cmd, outFile); err != nil {
+		return err
+	}
+	if err := outFile.Sync(); err != nil {
+		return fmt.Errorf("保存备份文件失败: %w", err)
+	}
+	closeFileErr := outFile.Close()
+	fileClosed = true
+	if closeFileErr != nil {
+		return fmt.Errorf("保存备份文件失败: %w", closeFileErr)
+	}
+	keepFile = true
+	return nil
+}
+
+func streamDatabaseDumpToGzip(ctx context.Context, cancel context.CancelFunc, cmd *exec.Cmd, dst io.Writer) error {
+	configureBackupCommandCancellation(cmd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -832,14 +1114,20 @@ func dumpDatabaseToGzip(dbName, dbPass, filePath string) error {
 		return fmt.Errorf("启动 mysqldump 失败: %w", err)
 	}
 
-	gz := gzip.NewWriter(outFile)
+	gz := gzip.NewWriter(dst)
 	copyErr := error(nil)
 	if _, err := io.Copy(gz, stdout); err != nil {
 		copyErr = err
+		// Stop the producer before waiting: after a disk write failure nobody
+		// consumes stdout, so mysqldump can otherwise block forever on its pipe.
+		cancel()
+		_ = stdout.Close()
 	}
 	closeGzipErr := gz.Close()
-	closeFileErr := outFile.Close()
-	fileClosed = true
+	if closeGzipErr != nil {
+		cancel()
+		_ = stdout.Close()
+	}
 	waitErr := cmd.Wait()
 
 	if copyErr != nil {
@@ -847,9 +1135,6 @@ func dumpDatabaseToGzip(dbName, dbPass, filePath string) error {
 	}
 	if closeGzipErr != nil {
 		return fmt.Errorf("完成 gzip 写入失败: %w", closeGzipErr)
-	}
-	if closeFileErr != nil {
-		return fmt.Errorf("保存备份文件失败: %w", closeFileErr)
 	}
 	if waitErr != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -862,7 +1147,6 @@ func dumpDatabaseToGzip(dbName, dbPass, filePath string) error {
 		return fmt.Errorf("mysqldump 失败: %s", msg)
 	}
 
-	keepFile = true
 	return nil
 }
 

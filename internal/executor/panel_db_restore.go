@@ -88,6 +88,16 @@ func StartPanelDBRestore(cfg *config.Config, backupPath string) (PanelDBRestoreS
 		return PanelDBRestoreStatus{}, errors.New("已有面板维护操作正在执行")
 	}
 	defer panelLifecycleMu.Unlock()
+	releaseOperations, err := panelOperations.beginUpdate()
+	if err != nil {
+		return PanelDBRestoreStatus{}, err
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			releaseOperations()
+		}
+	}()
 	if SnapshotPanelUpdateStatus().Running {
 		return PanelDBRestoreStatus{}, errors.New("面板正在更新，请稍后再恢复")
 	}
@@ -131,6 +141,9 @@ func StartPanelDBRestore(cfg *config.Config, backupPath string) (PanelDBRestoreS
 		_ = os.Remove(planPath)
 		return PanelDBRestoreStatus{}, fmt.Errorf("启动独立恢复任务失败: %w", err)
 	}
+	// The independent unit will stop this process before replacing SQLite. Keep
+	// admission closed even after returning the HTTP response.
+	handedOff = true
 	return status, nil
 }
 
@@ -156,16 +169,24 @@ func RunPanelDBRestorePlan(planPath string) error {
 		_ = panelDBRestoreCommand("systemctl", "start", "yub-wpanel")
 		return fail("替换面板数据库失败，已尝试重新启动原面板")
 	}
-	removeSQLiteSidecars(plan.DBPath)
+	if err := removeSQLiteSidecars(plan.DBPath); err != nil {
+		return fail("数据库已替换，但旧 SQLite 日志文件清理失败；面板保持停止，请人工处理，恢复前安全备份已保留")
+	}
 	if err := panelDBRestoreCommand("systemctl", "start", "yub-wpanel"); err == nil && panelDBRestoreWaitHealth(plan.HealthURL, 60*time.Second) == nil {
 		return writePanelDBRestoreJSON(plan.StatusPath, PanelDBRestoreStatus{ID: plan.ID, Status: "success", Message: "面板数据库恢复成功", SafeBackupName: filepath.Base(plan.SafeBackup), UpdatedAt: time.Now().UTC().Format(time.RFC3339)})
 	}
 
-	_ = panelDBRestoreCommand("systemctl", "stop", "yub-wpanel")
+	// A failed health check does not mean that the restored process has exited.
+	// Never overwrite its database or remove live WAL files unless stop succeeds.
+	if err := panelDBRestoreCommand("systemctl", "stop", "yub-wpanel"); err != nil {
+		return fail("恢复后的面板无法正常启动，且停止服务失败；未覆盖正在使用的数据库，恢复前安全备份已保留，请人工处理")
+	}
 	if err := replacePanelDBFile(plan.SafeBackup, plan.DBPath); err != nil {
 		return fail("恢复后的面板无法正常启动，恢复安全备份也失败，请人工处理")
 	}
-	removeSQLiteSidecars(plan.DBPath)
+	if err := removeSQLiteSidecars(plan.DBPath); err != nil {
+		return fail("安全备份已复制回去，但旧 SQLite 日志文件清理失败；面板保持停止，请人工处理")
+	}
 	if err := panelDBRestoreCommand("systemctl", "start", "yub-wpanel"); err != nil || panelDBRestoreWaitHealth(plan.HealthURL, 60*time.Second) != nil {
 		return fail("恢复后的面板无法正常启动；安全备份已复制回去，但面板仍未恢复健康，请人工处理")
 	}
@@ -219,9 +240,13 @@ func replacePanelDBFile(source, target string) error {
 	return nil
 }
 
-func removeSQLiteSidecars(dbPath string) {
-	_ = os.Remove(dbPath + "-wal")
-	_ = os.Remove(dbPath + "-shm")
+func removeSQLiteSidecars(dbPath string) error {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(dbPath + suffix); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove SQLite %s: %w", suffix, err)
+		}
+	}
+	return nil
 }
 
 func writePanelDBRestoreJSON(path string, value any) error {

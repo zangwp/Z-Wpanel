@@ -6,10 +6,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zangwp/Z-Wpanel/internal/config"
 	"github.com/zangwp/Z-Wpanel/internal/executor"
@@ -24,7 +24,9 @@ type SoftwareHandler struct{}
 var softwareNginxConfigPath = "/etc/nginx/conf.d/yubwpanel.conf"
 
 var runSoftwareShellCommand = func(command string) ([]byte, error) {
-	return exec.Command("bash", "-c", command).CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return boundedSoftwareRead(ctx, "bash", "-c", command)
 }
 
 type guardResponse struct {
@@ -69,11 +71,14 @@ func softwareLang(c *gin.Context) string {
 
 func (h *SoftwareHandler) List(c *gin.Context) {
 	lang := softwareLang(c)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	fresh := c.Query("fresh") == "1"
 	items := []softwareItem{
-		getPHPInfo(lang),
-		getNginxInfo(lang),
-		getMariaDBInfo(lang),
-		getRedisInfo(lang),
+		getPHPInfo(ctx, lang, fresh),
+		getNginxInfo(ctx, lang, fresh),
+		getMariaDBInfo(ctx, lang, fresh),
+		getRedisInfo(ctx, lang, fresh),
 	}
 	items[0].Configs = append(items[0].Configs, softwareConfig{
 		Key:   "max_input_time",
@@ -108,6 +113,7 @@ func (h *SoftwareHandler) InstallDevelopmentTool(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(i18n.T(lang, "software.development_tool_install_failed")))
 		return
 	}
+	softwareReadCache.invalidate()
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{"message": i18n.T(lang, "software.development_tool_installed")}))
 }
 
@@ -210,6 +216,7 @@ func (h *SoftwareHandler) ClearLog(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(i18n.T(lang, "software.clear_failed")))
 		return
 	}
+	softwareReadCache.invalidate()
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{"message": i18n.T(lang, "software.log_cleared", i18n.P{"name": name})}))
 }
 
@@ -254,6 +261,7 @@ func (h *SoftwareHandler) GuardAction(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(i18n.T(lang, "software.operation_failed_with_error", i18n.P{"error": err.Error()})))
 		return
 	}
+	softwareReadCache.invalidate()
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{"message": i18n.T(lang, "software.action_success", i18n.P{"service": req.Service, "action": req.Action})}))
 }
 
@@ -426,6 +434,7 @@ func (h *SoftwareHandler) SaveConfig(c *gin.Context) {
 		// 值没变就不要触发一次真实的重启——前端已经会跳过没改过的值，但后端不该只
 		// 依赖前端做这层保护（比如以后有人直接调 API，或者前端逻辑被改动）。
 		if newContent == content {
+			softwareReadCache.invalidate()
 			c.JSON(http.StatusOK, models.SuccessResponse(gin.H{"message": i18n.T(lang, "software.config_unchanged")}))
 			return
 		}
@@ -443,6 +452,7 @@ func (h *SoftwareHandler) SaveConfig(c *gin.Context) {
 			}
 			return
 		}
+		softwareReadCache.invalidate()
 		c.JSON(http.StatusOK, models.SuccessResponse(gin.H{"message": i18n.T(lang, "software.config_updated_reloaded", i18n.P{"service": serviceName})}))
 		return
 	}
@@ -518,6 +528,7 @@ func (h *SoftwareHandler) SaveConfig(c *gin.Context) {
 		}
 	}
 
+	softwareReadCache.invalidate()
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{"message": i18n.T(lang, "software.config_updated_reloaded", i18n.P{"service": serviceName})}))
 }
 
@@ -591,12 +602,13 @@ func (h *SoftwareHandler) ClearOpcache(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(i18n.T(lang, "software.opcache_clear_failed", i18n.P{"error": err.Error()})))
 		return
 	}
+	softwareReadCache.invalidate()
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{"message": i18n.T(lang, "software.opcache_cleared")}))
 }
 
-func getPHPInfo(lang string) softwareItem {
-	ver := runCmd(executor.PHPCLIBinary() + " -v 2>/dev/null | head -1 | awk '{print $2}'")
-	extCount := runCmd(executor.PHPCLIBinary() + " -m 2>/dev/null | wc -l")
+func getPHPInfo(ctx context.Context, lang string, fresh bool) softwareItem {
+	ver := runSoftwareRead(ctx, fresh, executor.PHPCLIBinary()+" -v 2>/dev/null | head -1 | awk '{print $2}'")
+	extCount := runSoftwareRead(ctx, fresh, executor.PHPCLIBinary()+" -m 2>/dev/null | wc -l")
 	return softwareItem{
 		Name:       "PHP",
 		Version:    strings.TrimSpace(ver),
@@ -614,8 +626,8 @@ func getPHPInfo(lang string) softwareItem {
 	}
 }
 
-func getNginxInfo(lang string) softwareItem {
-	ver := runCmd("nginx -v 2>&1 | awk -F/ '{print $2}'")
+func getNginxInfo(ctx context.Context, lang string, fresh bool) softwareItem {
+	ver := runSoftwareRead(ctx, fresh, "nginx -v 2>&1 | awk -F/ '{print $2}'")
 	return softwareItem{
 		Name:       "Nginx",
 		Version:    strings.TrimSpace(ver),
@@ -627,8 +639,8 @@ func getNginxInfo(lang string) softwareItem {
 	}
 }
 
-func getMariaDBInfo(lang string) softwareItem {
-	ver := runCmd("mariadb --version 2>/dev/null | awk '{print $3}' | cut -d, -f1")
+func getMariaDBInfo(ctx context.Context, lang string, fresh bool) softwareItem {
+	ver := runSoftwareRead(ctx, fresh, "mariadb --version 2>/dev/null | awk '{print $3}' | cut -d, -f1")
 	return softwareItem{
 		Name:       "MariaDB",
 		Version:    strings.TrimSpace(ver),
@@ -640,10 +652,10 @@ func getMariaDBInfo(lang string) softwareItem {
 	}
 }
 
-func getRedisInfo(lang string) softwareItem {
-	ver := runCmd("redis-server --version 2>/dev/null | awk '{print $3}' | cut -d= -f2")
+func getRedisInfo(ctx context.Context, lang string, fresh bool) softwareItem {
+	ver := runSoftwareRead(ctx, fresh, "redis-server --version 2>/dev/null | awk '{print $3}' | cut -d= -f2")
 	status := i18n.T(lang, "software.running")
-	if runCmd("systemctl is-active redis-server 2>/dev/null") != "active" {
+	if runSoftwareRead(ctx, fresh, "systemctl is-active redis-server 2>/dev/null") != "active" {
 		status = i18n.T(lang, "software.stopped")
 	}
 	return softwareItem{
@@ -657,9 +669,15 @@ func getRedisInfo(lang string) softwareItem {
 	}
 }
 
-func runCmd(cmd string) string {
-	out, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
-	return strings.TrimSpace(string(out))
+func runCmd(command string) string {
+	return runSoftwareRead(context.Background(), false, command)
+}
+func runSoftwareRead(ctx context.Context, fresh bool, command string) string {
+	out, err := softwareReadCache.read(ctx, fresh, "bash", "-c", command)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 func replaceIniValue(content, key, value string) string {

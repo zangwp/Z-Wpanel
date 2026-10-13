@@ -5,9 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zangwp/Z-Wpanel/internal/accountsecurity"
+	"github.com/zangwp/Z-Wpanel/internal/database"
+	"github.com/zangwp/Z-Wpanel/internal/middleware"
 )
 
 func withSystemSettingStubs(t *testing.T) {
@@ -26,10 +31,33 @@ func updateSystemSetting(t *testing.T, body string) *httptest.ResponseRecorder {
 
 func updateSystemSettingWithHandler(t *testing.T, handler *SettingsHandler, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	credentialChange := strings.Contains(body, `"username"`) || strings.Contains(body, `"old_password"`) || strings.Contains(body, `"basic_auth_`)
+	if credentialChange && handler.Auth == nil && database.GetDB() != nil {
+		db := database.GetDB()
+		if err := accountsecurity.InitMFASchema(db); err != nil {
+			t.Fatal(err)
+		}
+		if err := accountsecurity.InitAuditSchema(db); err != nil {
+			t.Fatal(err)
+		}
+		mfa, err := accountsecurity.NewMFAService(db, filepath.Join(t.TempDir(), "account-mfa.key"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		audit := accountsecurity.NewAuditService(db)
+		t.Cleanup(audit.Close)
+		handler.Auth = &AuthHandler{DB: db, MFA: mfa, Audit: audit}
+	}
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewBufferString(body))
 	ctx.Request.Header.Set("Content-Type", "application/json")
+	if handler.Auth != nil {
+		session := middleware.GlobalSessionStore.Create("admin")
+		t.Cleanup(func() { middleware.GlobalSessionStore.Delete(session.Token) })
+		ctx.Set("session_username", "admin")
+		ctx.Request.AddCookie(&http.Cookie{Name: "wp_session", Value: session.Token})
+	}
 	handler.UpdateSettings(ctx)
 	return recorder
 }

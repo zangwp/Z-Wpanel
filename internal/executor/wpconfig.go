@@ -125,9 +125,11 @@ $table_prefix = '%s';
  * 如需启用，改为 true。
  */
 define('WP_DEBUG', false);
+define('WP_DEBUG_DISPLAY', false);
 
 /* Add any custom values between this line and the "stop editing" line. */
 
+define('WP_CACHE', true);
 define('WP_REDIS_PREFIX', '%s');
 define('WP_CACHE_KEY_SALT', '%s');
 
@@ -144,6 +146,7 @@ require_once ABSPATH . 'wp-settings.php';
 `, phpSingleQuoteEscape(dbName), phpSingleQuoteEscape(dbUser), phpSingleQuoteEscape(dbPassword), salts, phpSingleQuoteEscape(tablePrefix), phpSingleQuoteEscape(cacheSalt), phpSingleQuoteEscape(cacheSalt))
 
 	configPath := filepath.Join(webRoot, "wp-config.php")
+	config = renderWPNativePolicy(config, false, true)
 	return os.WriteFile(configPath, []byte(config), 0600)
 }
 

@@ -716,3 +716,8 @@ func minInt(a, b int) int {
 	}
 	return b
 }
+
+func parseWebAccessTime(raw string) time.Time {
+	t, _ := time.Parse("02/Jan/2006:15:04:05 -0700", raw)
+	return t
+}

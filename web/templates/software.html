@@ -1,6 +1,6 @@
 {{template "base" .}}
 {{define "software_content"}}
-<div x-data="softwareManager()" x-init="fetchList()">
+<div x-data="softwareManager()" x-init="fetchList(); deferTask(() => fetchHealth(), 350)">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
         <div>
             <h2 class="text-xl font-bold text-white">{{t .Lang "nav.software"}}</h2>
@@ -19,6 +19,16 @@
 
     <section x-show="activeSection === 'runtime'" x-cloak>
     <div class="card mb-6"><h3 class="text-lg font-semibold text-white">Nginx · PHP-FPM</h3><p class="text-sm text-gray-400 mt-2">{{t .Lang "software.nginx_runtime_help"}}</p></div>
+    <section class="card mb-6" :aria-busy="healthLoading">
+        <div class="flex items-center justify-between gap-3 mb-4"><h3 class="text-lg font-semibold">{{t .Lang "software.health_title"}}</h3><button class="btn-secondary" @click="fetchHealth(true)" :disabled="healthLoading">{{t .Lang "common.refresh"}}</button></div>
+        <p x-show="healthError" class="text-red-400 text-sm" role="alert" x-text="healthError"></p>
+        <template x-for="runtime in (health?.php || [])" :key="runtime.version"><div class="mb-4">
+            <p class="font-semibold" x-text="'PHP-FPM ' + runtime.version"></p>
+            <div class="flex flex-wrap gap-2 mt-2"><template x-for="extension in runtime.extensions" :key="extension.name"><span :class="healthBadge(extension.state)" x-text="extension.name + ': ' + healthLabel(extension.state)"></span></template></div>
+            <p class="form-hint" x-show="runtime.reason" x-text="phpHealthReason(runtime.reason)"></p>
+        </div></template>
+        <div x-show="health?.backup"><p class="text-sm" x-text="healthLabel(health?.backup?.status)"></p><p class="form-hint" x-text="missingDependencyPackages()"></p><button class="btn-secondary mt-2" @click="installBackupDependencies()" :disabled="dependencyInstalling || healthLoading">{{t .Lang "software.backup_dependencies_install"}}</button></div>
+    </section>
     <div x-data="processGuard()" x-init="deferTask(() => fetchStatus(), 700)" class="card mb-6">
         <div class="flex items-center justify-between mb-3">
             <h3 class="text-lg font-semibold text-white">{{t .Lang "software.service_status"}}</h3>
@@ -226,22 +236,33 @@
 <script>
 function processGuard() {
     return {
-        services: [],
-        async fetchStatus() {
+services: [],
+async fetchStatus(fresh = false) {
+            if (this.disposed) return;
+            if (this.pollTimer !== null) clearTimeout(this.pollTimer);
+            this.pollTimer = null;
+            const requestID = ++this.statusRequestID;
             try {
-                const r = await api('/software/guard');
+                const r = await api('/software/guard' + (fresh ? '?fresh=1' : ''));
+                if (this.disposed || requestID !== this.statusRequestID) return;
                 if (r.success) {
-                    (r.data || []).forEach(s => s._acting = false);
+                    (r.data || []).forEach(s => s._acting = !!this.actingServices[s.service]);
                     this.services = r.data || [];
                 }
-            } catch(e) {}
-            setTimeout(() => this.fetchStatus(), 30000);
+            } catch(e) {
+            } finally {
+                if (!this.disposed && requestID === this.statusRequestID) {
+                    this.pollTimer = setTimeout(() => this.fetchStatus(), 30000);
+                }
+            }
         },
-        async action(service, act) {
+async action(service, act) {
             const s = this.services.find(s => s.service === service);
-            if (!s) return;
+            if (!s || this.actingServices[service] || this.disposed) return;
             if (act === 'stop' && !await confirmModal(t('software.confirm_stop_service', { service: s.name }))) return;
             if (act === 'restart' && !await confirmModal(t('software.confirm_restart_service', { service: s.name }))) return;
+            if (this.actingServices[service] || this.disposed) return;
+            this.actingServices[service] = true;
             s._acting = true;
             try {
                 const r = await api('/software/guard/action', { method: 'POST', body: { service, action: act } });
@@ -249,104 +270,153 @@ function processGuard() {
                 await this.fetchStatus();
             } catch(e) {
                 showToast(e.message, 'error');
+            } finally {
+                delete this.actingServices[service];
                 s._acting = false;
+                const current = this.services.find(item => item.service === service);
+                if (current) current._acting = false;
             }
+        },
+actingServices: {},
+pollTimer: null,
+statusRequestID: 0,
+disposed: false,
+destroy() {
+            this.disposed = true;
+            this.statusRequestID++;
+            if (this.pollTimer !== null) clearTimeout(this.pollTimer);
+            this.pollTimer = null;
         }
-    }
+}
 }
 
 function softwareManager() {
     return {
-        software: [],
-        phpRuntimes: [],
-        developmentTools: [], toolsError: '', toolsLoading: false,
-        activeSection: 'runtime',
-        showHelp: false,
-        clearingOpcache: false,
-        logModal: { open: false, title: '', content: '' },
-        configurableSoftware() {
+software: [],
+phpRuntimes: [],
+developmentTools: [],
+toolsError: '',
+toolsLoading: false,
+activeSection: 'runtime',
+showHelp: false,
+clearingOpcache: false,
+logModal: { open: false, title: '', content: '', loading: false, clearing: false },
+configurableSoftware() {
             return this.software.filter(sw => ['PHP', 'Nginx', 'MariaDB', 'Redis'].includes(sw.name));
         },
-        async fetchList() {
+async fetchList(fresh = false) {
+            if (this.disposed || (this.listLoading && !fresh)) return;
+            if (this.listController) this.listController.abort();
+            const controller = new AbortController(), requestID = ++this.listRequestID;
+            this.listController = controller;
+            const current = () => !this.disposed && !controller.signal.aborted && requestID === this.listRequestID;
+            this.listLoading = true; this.listError = '';
             try {
-                const r = await api('/software');
+                const r = await api('/software' + (fresh ? '?fresh=1' : ''), { silent: true, timeout: 30000, signal: controller.signal });
+                if (!current()) return;
                 if (r.success) {
                     this.software = (r.data || []).map(sw => {
+                        const previous = this.software.find(old => old.name === sw.name);
+                        if (previous?._saving) return previous;
                         sw._saving = false;
                         sw._recommending = false; sw._showRecommendations = false;
-                        (sw.configs || []).forEach(cfg => { cfg._value = cfg.value; cfg._recommended = ''; });
+                        (sw.configs || []).forEach(cfg => {
+                            const old = previous?.configs?.find(item => item.key === cfg.key);
+                            cfg._value = old && old._value !== old.value ? old._value : cfg.value;
+                            cfg._recommended = old?._recommended ?? '';
+                        });
                         return sw;
                     });
                 }
-            } catch(e) {}
-            await this.fetchDevelopmentTools();
+            } catch(e) { if (current()) this.listError = e.message; }
+            finally { if (current()) { this.listLoading = false; this.listController = null; } }
+            if (!current()) return;
+            await Promise.all([this.fetchDevelopmentTools(fresh)]);
         },
-        async fetchDevelopmentTools() {
-            if (this.toolsLoading) return;
+async fetchDevelopmentTools(fresh = false) {
+            if (this.disposed || (this.toolsLoading && !fresh)) return;
+            this.toolsController?.abort();
+            const controller = new AbortController(), requestID = ++this.toolsRequestID;
+            this.toolsController = controller;
+            const current = () => !this.disposed && !controller.signal.aborted && requestID === this.toolsRequestID;
             this.toolsLoading = true; this.toolsError = '';
             try {
-                const r = await api('/software/development-tools');
+                const r = await api('/software/development-tools', { silent: true, signal: controller.signal });
                 if (!r.success) throw Error(r.message || 'Unable to load tool status');
-                this.developmentTools = (r.data || []).map(tool => ({ ...tool, _installing: false }));
-            } catch(e) { this.toolsError = e.message; this.developmentTools = []; }
-            finally { this.toolsLoading = false; }
+                if (current()) this.developmentTools = (r.data || []).map(tool => ({ ...tool, _installing: !!this.developmentTools.find(old => old.id === tool.id)?._installing }));
+            } catch(e) { if (current()) this.toolsError = e.message; }
+            finally { if (current()) { this.toolsLoading = false; this.toolsController = null; } }
         },
-        async installDevelopmentTool(tool) {
-            if (tool.state !== 'missing') return;
+async installDevelopmentTool(tool) {
+            if (this.disposed || tool._installing || tool.state !== 'missing') return;
             if (!await confirmModal(t('software.development_tool_install_confirm', { tool: tool.name }))) return;
+            if (this.disposed || tool._installing) return;
             tool._installing = true;
             try {
                 const r = await api('/software/development-tools/install', { method: 'POST', body: { id: tool.id }, timeout: 600000 });
                 showToast(r.data?.message || t('software.development_tool_installed'), 'success');
                 await this.fetchDevelopmentTools();
             } catch(e) { showToast(e.message, 'error'); }
-            finally { tool._installing = false; }
+            finally { tool._installing = false; const current = this.developmentTools.find(item => item.id === tool.id); if (current) current._installing = false; }
         },
-        async viewLog(name) {
+async viewLog(name) {
+            if (this.disposed) return;
+            if (this.logController) this.logController.abort();
+            const controller = new AbortController(), requestID = ++this.logRequestID;
+            this.logController = controller;
+            const current = () => !this.disposed && !controller.signal.aborted && requestID === this.logRequestID && this.logModal.title === name && this.logModal.open;
             this.logModal.title = name;
             this.logModal.content = t('software.log_loading');
-            this.logModal.open = true;
+            this.logModal.open = true; this.logModal.loading = true;
             try {
-                const r = await api('/software/log?name=' + encodeURIComponent(name) + '&lines=200');
-                this.logModal.content = r.success ? r.data.content : t('software.log_load_failed');
-            } catch(e) { this.logModal.content = t('software.log_load_failed_with_error', { error: e.message }); }
+                const r = await api('/software/log?name=' + encodeURIComponent(name) + '&lines=200', { silent: true, timeout: 15000, signal: controller.signal });
+                if (current()) this.logModal.content = r.success ? r.data.content : t('software.log_load_failed');
+            } catch(e) { if (current()) this.logModal.content = t('software.log_load_failed_with_error', { error: e.message }); }
+            finally { if (current()) { this.logModal.loading = false; this.logController = null; } }
         },
-        async clearLog() {
-            if (!await confirmModal(t('software.confirm_clear_log', { name: this.logModal.title }))) return;
+async clearLog() {
+            if (this.disposed || !this.logModal.open || this.logModal.loading || this.logModal.clearing) return;
+            const name = this.logModal.title, requestID = this.logRequestID;
+            const current = () => !this.disposed && this.logModal.open && name === this.logModal.title && requestID === this.logRequestID;
+            if (!await confirmModal(t('software.confirm_clear_log', { name })) || !current() || this.logModal.clearing) return;
+            this.logModal.clearing = true;
             try {
-                const r = await api('/software/log?name=' + encodeURIComponent(this.logModal.title), { method: 'DELETE' });
-                if (r.success) {
+                const r = await api('/software/log?name=' + encodeURIComponent(name), { method: 'DELETE' });
+                if (current() && r.success) {
                     this.logModal.content = t('software.log_cleared_placeholder');
-                    showToast(r.data?.message || t('software.log_cleared', { name: this.logModal.title }), 'success');
+                    showToast(r.data?.message || t('software.log_cleared', { name }), 'success');
                 }
-            } catch(e) { showToast(e.message, 'error'); }
+            } catch(e) { if (current()) showToast(e.message, 'error'); }
+            finally { this.logModal.clearing = false; }
         },
-        async saveConfig(sw) {
+async saveConfig(sw) {
             if (sw._saving) return;
+            const changed = sw.configs.filter(cfg => cfg._value !== cfg.value)
+                .map(cfg => ({ cfg, value: cfg._value }));
+            if (!changed.length) return;
+            sw._saving = true;
             if (sw.name === 'PHP') {
-                const changed = sw.configs.filter(cfg => cfg._value !== cfg.value);
-                if (!changed.length) return;
-                sw._saving = true;
                 try {
-                    await api('/software/php-config', { method: 'PUT', body: { values: Object.fromEntries(changed.map(cfg => [cfg.key, cfg._value])) }, timeout: 120000 });
-                    for (const cfg of changed) cfg.value = cfg._value;
+                    await api('/software/php-config', { method: 'PUT', body: { values: Object.fromEntries(changed.map(({cfg, value}) => [cfg.key, value])) }, timeout: 120000 });
+                    for (const {cfg, value} of changed) cfg.value = value;
                     showToast(t('software.config_updated_reloaded', { service: 'PHP-FPM' }), 'success');
                 } catch(e) { showToast(e.message, 'error'); }
                 finally { sw._saving = false; }
                 return;
             }
-            for (const cfg of sw.configs) {
-                if (cfg._value === cfg.value) continue;
-                sw._saving = true;
-                try {
-                    const r = await api('/software/config', { method: 'PUT', body: { name: sw.name, key: cfg.key, value: cfg._value } });
-                    cfg.value = cfg._value;
-                    showToast(r.data?.message || t('software.config_updated', { label: cfg.label }), 'success');
-                } catch(e) { showToast(e.message, 'error'); }
+            try {
+                for (const {cfg, value} of changed) {
+                    try {
+                        const r = await api('/software/config', { method: 'PUT', body: { name: sw.name, key: cfg.key, value } });
+                        cfg.value = value;
+                        showToast(r.data?.message || t('software.config_updated', { label: cfg.label }), 'success');
+                    } catch(e) { showToast(e.message, 'error'); }
+                }
+            } finally {
                 sw._saving = false;
             }
         },
-        async recommend(sw, silent = false) {
+async recommend(sw, silent = false) {
             sw._recommending = true;
             try {
                 const r = await api('/software/recommend?name=' + encodeURIComponent(sw.name));
@@ -360,7 +430,7 @@ function softwareManager() {
             } catch(e) { if (!silent) showToast(e.message, 'error'); }
             sw._recommending = false;
         },
-        async clearOpcache() {
+async clearOpcache() {
             if (!await confirmModal('{{t .Lang "software.opcache_clear_confirm"}}')) return;
             this.clearingOpcache = true;
             try {
@@ -368,8 +438,113 @@ function softwareManager() {
                 showToast(r.data?.message || '{{t .Lang "software.opcache_cleared"}}', 'success');
             } catch(e) { showToast(e.message, 'error'); }
             this.clearingOpcache = false;
+        },
+disposed: false,
+listLoading: false,
+listError: '',
+listRequestID: 0,
+listController: null,
+logRequestID: 0,
+logController: null,
+health: null,
+healthLoading: false,
+healthError: '',
+healthRequestID: 0,
+healthController: null,
+dependencyInstalling: false,
+toolsRequestID: 0,
+toolsController: null,
+closeLog() {
+            this.logRequestID++;
+            if (this.logController) this.logController.abort();
+            this.logController = null;
+            this.logModal.open = false;
+            this.logModal.loading = false;
+        },
+destroy() {
+            this.disposed = true;
+            this.listRequestID++;
+            if (this.listController) this.listController.abort();
+            this.listController = null;
+            this.healthRequestID++; this.runtimeRequestID++; this.toolsRequestID++;
+            for (const name of ['healthController', 'runtimeController', 'toolsController']) {
+                this[name]?.abort(); this[name] = null;
+            }
+            this.closeLog();
+        },
+async refreshAll() {
+            if (this.disposed) return;
+            await Promise.all([this.fetchList(true), this.fetchHealth(true)]);
+        },
+runtimeHealth(version) {
+            return this.health?.php?.find(runtime => runtime.version === version) || { state: this.healthLoading ? 'checking' : 'unknown', extensions: [], reason: '' };
+        },
+healthExtensions(version) {
+            return [...this.runtimeHealth(version).extensions].sort((left, right) => {
+                const priority = extension => extension.state === 'missing' ? 0 : extension.state === 'unknown' ? 1 : extension.importance === 'required' ? 2 : 3;
+                return priority(left) - priority(right);
+            });
+        },
+healthLabel(state) {
+            const keys = { ok: 'software.health_ready', installed: 'software.health_ready', loaded: 'software.health_loaded', warning: 'software.health_attention',
+                missing: 'software.health_missing', error: 'software.health_failed', checking: 'software.health_checking', running: 'software.running', stopped: 'software.stopped', enabled: 'software.health_enabled', disabled: 'software.health_disabled', static: 'software.health_static' };
+            return t(keys[state] || 'software.health_unknown');
+        },
+healthBadge(state) {
+            return ['ok', 'installed', 'loaded', 'running'].includes(state) ? 'badge-success text-xs' :
+                ['warning', 'missing', 'stopped', 'error'].includes(state) ? 'badge-warning text-xs' : 'badge-info text-xs';
+        },
+phpHealthReason(reason) {
+            return t(reason === 'configuration_unavailable' || reason === 'configuration_mismatch' ? 'software.php_configuration_unknown' : 'software.php_probe_unknown');
+        },
+opcacheValue(version, key) {
+            const value = this.runtimeHealth(version).opcache?.[key];
+            if (value === undefined || value === null) return t('software.health_unknown');
+            if (key === 'enabled') return t(value ? 'software.health_enabled' : 'software.health_disabled');
+            return String(value) + (key === 'memory_mb' ? ' MB' : '');
+        },
+backupModeHelp() {
+            const backup = this.health?.backup;
+            return t(!backup?.remote_enabled ? 'software.backup_local_dependencies_help' : backup.remote_type === 's3' ?
+                'software.backup_s3_dependencies_help' : 'software.backup_ssh_dependencies_help');
+        },
+missingDependencyPackages() {
+            const backup = this.health?.backup;
+            return [...new Set((backup?.dependencies || []).filter(dependency =>
+                dependency.required && dependency.status === 'missing' && (backup?.missing_required || []).includes(dependency.id)
+            ).map(dependency => dependency.package))];
+        },
+healthCheckedAt() {
+            const time = new Date(this.health?.checked_at);
+            return Number.isNaN(time.getTime()) ? '' : time.toLocaleString(document.documentElement.lang || 'zh-CN');
+        },
+async fetchHealth(fresh = false) {
+            if (this.disposed || (this.healthLoading && !fresh)) return;
+            this.healthController?.abort();
+            const controller = new AbortController(), requestID = ++this.healthRequestID;
+            this.healthController = controller;
+            const current = () => !this.disposed && !controller.signal.aborted && requestID === this.healthRequestID;
+            this.healthLoading = true; this.healthError = '';
+            try {
+                const result = await api('/software/health' + (fresh ? '?fresh=1' : ''), { silent: true, timeout: 15000, signal: controller.signal });
+                if (!result.success) throw Error(result.message || t('software.health_load_failed'));
+                if (current()) this.health = result.data;
+            } catch(error) { if (current()) this.healthError = error.message; }
+            finally { if (current()) { this.healthLoading = false; this.healthController = null; } }
+        },
+async installBackupDependencies() {
+            if (this.disposed || this.dependencyInstalling || this.healthLoading || !this.missingDependencyPackages().length || this.health?.backup?.configuration_status !== 'ok') return;
+            if (!await confirmModal(t('software.backup_dependencies_install_confirm', { packages: this.missingDependencyPackages().join(', ') }))) return;
+            if (this.disposed || this.dependencyInstalling) return;
+            this.dependencyInstalling = true;
+            try {
+                const result = await api('/software/backup-dependencies/install', { method: 'POST', body: {}, timeout: 660000 });
+                if (!result.success) throw Error(result.message || t('software.backup_dependencies_install_failed'));
+                if (!this.disposed) showToast(result.data?.message || t('software.backup_dependencies_installed'), 'success');
+            } catch(error) { if (!this.disposed) showToast(error.message, 'error'); }
+            finally { this.dependencyInstalling = false; await this.fetchHealth(true); }
         }
-    }
+}
 }
 </script>
 {{end}}

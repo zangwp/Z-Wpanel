@@ -4,12 +4,15 @@
     <p class="text-sm text-gray-400 mt-4">{{t .Lang "ssh_port.help"}}</p>
     <div class="flex flex-wrap items-center gap-4 my-4"><span class="text-sm text-gray-300">{{t .Lang "ssh_port.current"}} <strong x-text="status.port || '—'"></strong>/TCP</span><button class="btn-secondary text-xs" @click="refresh()" :disabled="busy">{{t .Lang "firewall.refresh"}}</button></div>
     <p x-show="error" class="text-sm text-red-300 my-3" x-text="error" role="alert"></p>
-    <p x-show="status.reason" class="text-sm text-yellow-300 my-3" x-text="status.reason"></p>
+    <div x-show="status.reason" class="ssh-port-requirement">
+        <p class="text-sm text-yellow-300" x-text="status.reason"></p>
+    </div>
     <div x-show="!change" class="space-y-4">
-        <div class="access-custom"><label class="label" for="ssh-new-port">{{t .Lang "ssh_port.new"}}</label><input id="ssh-new-port" class="input-field" type="number" min="1" max="65535" x-model.number="port" placeholder="2222" :disabled="busy || !status.available"></div>
+        <div class="ssh-port-field"><label class="label" for="ssh-new-port">{{t .Lang "ssh_port.new"}}</label><input id="ssh-new-port" class="input-field" type="number" min="1" max="65535" x-model.number="port" placeholder="{{t .Lang "ssh_port.new_placeholder"}}" :disabled="busy || status.pending"></div>
+        <p class="text-xs text-gray-400" x-show="!status.available && !status.pending">{{t .Lang "ssh_port.edit_help"}}</p>
         <p class="text-sm text-gray-400">{{t .Lang "ssh_port.scope"}}</p>
         <label class="flex items-start gap-2 text-sm text-gray-300"><input type="checkbox" x-model="cloudReady" :disabled="busy"><span>{{t .Lang "ssh_port.cloud"}}</span></label>
-        <button class="btn-primary" @click="begin()" :disabled="busy || !status.available || !cloudReady || !port" x-text="busy ? t('common.loading') : t('ssh_port.apply')"></button>
+        <button type="button" class="btn-primary" @click="begin()" :disabled="busy || status.pending || !status.available || !cloudReady || !port || Number(port) === Number(status.port)" x-text="busy ? t('common.loading') : t('ssh_port.apply')"></button>
     </div>
     <div x-show="change" class="space-y-4">
         <p class="text-sm text-green-300" x-text="change ? t('ssh_port.transition') + change.old_port + ' → ' + change.new_port : ''"></p>
@@ -33,11 +36,13 @@ function sshPortManager() {
             finally { this.busy = false; }
         },
         async begin() {
-            if (!this.cloudReady || !this.status.available || !Number.isInteger(Number(this.port)) || Number(this.port)<1 || Number(this.port)>65535) return;
-            if (!await confirmModal(t('ssh_port.confirm_begin'))) return;
+            if (this.busy || this.change || this.status.pending || !this.cloudReady || !this.status.available || !Number.isInteger(Number(this.port)) || Number(this.port)<1 || Number(this.port)>65535 || Number(this.port) === Number(this.status.port)) return;
+            const requestedPort = Number(this.port);
             this.busy = true; this.error = '';
             try {
-                const r = await api('/firewall/ssh-port', { method:'POST', body:{port:Number(this.port),confirm:true}, timeout:50000 });
+                if (!await confirmModal(t('ssh_port.confirm_begin'))) return;
+                if (this.change || this.status.pending || !this.cloudReady || !this.status.available || Number(this.port) !== requestedPort || requestedPort === Number(this.status.port)) return;
+                const r = await api('/firewall/ssh-port', { method:'POST', body:{port:requestedPort,confirm:true}, timeout:50000 });
                 if (!r.success || !r.data?.token) throw Error(t('common.operation_failed'));
                 this.change = r.data; this.status.available = false;
                 clearTimeout(this.timer); this.timer = setTimeout(async()=>{ this.change=null; await this.refresh(); this.$dispatch('ssh-port-changed'); },310000);
