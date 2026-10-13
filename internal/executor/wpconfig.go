@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,9 +126,12 @@ $table_prefix = '%s';
  * 如需启用，改为 true。
  */
 define('WP_DEBUG', false);
+define('WP_DEBUG_DISPLAY', false);
 
 /* Add any custom values between this line and the "stop editing" line. */
 
+define('WP_CACHE', true);
+define('LSOC_PREFIX', '%s');
 define('WP_REDIS_PREFIX', '%s');
 define('WP_CACHE_KEY_SALT', '%s');
 
@@ -141,9 +145,10 @@ if (!defined('ABSPATH')) {
 
 /** 加载 WordPress 设置和引入文件 */
 require_once ABSPATH . 'wp-settings.php';
-`, phpSingleQuoteEscape(dbName), phpSingleQuoteEscape(dbUser), phpSingleQuoteEscape(dbPassword), salts, phpSingleQuoteEscape(tablePrefix), phpSingleQuoteEscape(cacheSalt), phpSingleQuoteEscape(cacheSalt))
+`, phpSingleQuoteEscape(dbName), phpSingleQuoteEscape(dbUser), phpSingleQuoteEscape(dbPassword), salts, phpSingleQuoteEscape(tablePrefix), phpSingleQuoteEscape(cacheSalt), phpSingleQuoteEscape(cacheSalt), phpSingleQuoteEscape(cacheSalt))
 
 	configPath := filepath.Join(webRoot, "wp-config.php")
+	config = renderWPNativePolicy(config, false, true)
 	return os.WriteFile(configPath, []byte(config), 0600)
 }
 
@@ -217,7 +222,7 @@ func generateWPTablePrefix() string {
 func ensureWPConfigCachePrefixes(content, prefix string) (string, bool) {
 	updated := content
 	insertedAny := false
-	for _, name := range []string{"WP_REDIS_PREFIX", "WP_CACHE_KEY_SALT"} {
+	for _, name := range []string{"LSOC_PREFIX", "WP_REDIS_PREFIX", "WP_CACHE_KEY_SALT"} {
 		var inserted bool
 		updated, inserted = ensureWPConfigStringConstant(updated, name, prefix)
 		insertedAny = insertedAny || inserted
@@ -232,6 +237,42 @@ func ensureWPConfigStringConstant(content, name, value string) (string, bool) {
 	}
 	stmt := fmt.Sprintf("define('%s', '%s');\n", name, phpSingleQuoteEscape(value))
 	return insertBeforeMarker(content, stmt), true
+}
+
+// ConfigureLiteSpeedObjectCacheReversible applies the WordPress-side settings
+// used by the official LiteSpeed Cache plugin. Redis remains an external
+// service; these constants tell the plugin to use the panel-managed local
+// Redis instance and keep every site's keys isolated.
+func ConfigureLiteSpeedObjectCacheReversible(webRoot, domain string) (func() error, error) {
+	before, after, err := updateWPConfig(webRoot, func(content string) string {
+		prefix := wpCacheKeySalt(domain)
+		content = setBoolConstant(content, "WP_CACHE", true)
+		content = setBoolConstant(content, "LITESPEED_CONF", true)
+		content = setBoolConstant(content, "LITESPEED_CONF__OBJECT", true)
+		content = setBoolConstant(content, "LITESPEED_CONF__OBJECT__KIND", true)
+		content = applyStringConstant(content, "LITESPEED_CONF__OBJECT__HOST", "127.0.0.1")
+		content = applyIntConstant(content, "LITESPEED_CONF__OBJECT__PORT", 6379)
+		content = applyIntConstant(content, "LITESPEED_CONF__OBJECT__DB_ID", 0)
+		content = setBoolConstant(content, "LITESPEED_CONF__OBJECT__PERSISTENT", true)
+		content = applyStringConstant(content, "LSOC_PREFIX", prefix)
+		content = applyStringConstant(content, "WP_REDIS_PREFIX", prefix)
+		content = applyStringConstant(content, "WP_CACHE_KEY_SALT", prefix)
+		return content
+	})
+	if err != nil {
+		return nil, err
+	}
+	return func() error {
+		configPath := filepath.Join(webRoot, "wp-config.php")
+		current, err := os.ReadFile(configPath)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(current, after) {
+			return errWPConfigChanged
+		}
+		return writeWPConfig(configPath, before)
+	}, nil
 }
 
 func generateWPSalts() (string, error) {

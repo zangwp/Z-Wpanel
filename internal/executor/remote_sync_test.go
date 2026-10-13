@@ -112,11 +112,11 @@ func TestValidateS3BackupSettingsAcceptsR2StyleConfig(t *testing.T) {
 }
 
 func TestS3ObjectURLUsesPathStyleAndEscapesKey(t *testing.T) {
-	u, err := s3ObjectURL("https://abc123.r2.cloudflarestorage.com", "yub-wpanel-backups", "yub wpanel/example.com/db/site backup.sql.gz", "")
+	u, err := s3ObjectURL("https://abc123.r2.cloudflarestorage.com", "yub-wpanel-backups", "ols wpanel/example.com/db/site backup.sql.gz", "")
 	if err != nil {
 		t.Fatalf("s3ObjectURL() error = %v", err)
 	}
-	want := "https://abc123.r2.cloudflarestorage.com/yub-wpanel-backups/yub%20wpanel/example.com/db/site%20backup.sql.gz"
+	want := "https://abc123.r2.cloudflarestorage.com/yub-wpanel-backups/ols%20wpanel/example.com/db/site%20backup.sql.gz"
 	if got := u.String(); got != want {
 		t.Fatalf("s3ObjectURL = %q, want %q", got, want)
 	}

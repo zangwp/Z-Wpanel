@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -36,7 +35,7 @@ func CheckRepairConfig(path string) (*RepairConfigCheck, error) {
 	if info.Mode().Perm()&0022 != 0 {
 		return nil, errors.New("config_permissions_unsafe")
 	}
-	if stat, ok := info.Sys().(*syscall.Stat_t); !ok || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 {
+	if !repairConfigOwnerSafe(info) {
 		return nil, errors.New("config_ownership_unsafe")
 	}
 

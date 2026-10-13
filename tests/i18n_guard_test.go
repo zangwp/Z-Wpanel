@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/json"
 	"errors"
+	"github.com/zangwp/Z-Wpanel/internal/i18n"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -203,6 +204,13 @@ func collectExposedKeys(t *testing.T) map[string]bool {
 	content, err := os.ReadFile("../internal/router/router.go")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "i18n.AllMessageKeys()") {
+		exposed := map[string]bool{}
+		for _, key := range i18n.AllMessageKeys() {
+			exposed[key] = true
+		}
+		return exposed
 	}
 	blockPattern := regexp.MustCompile(`(?s)var\s+i18nKeys\s*=\s*\[\]string\s*\{(.*?)\}`)
 	match := blockPattern.FindSubmatch(content)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/zangwp/Z-Wpanel/internal/cloudflaresecurity"
 	"log"
 	"os"
 	"os/exec"
@@ -301,6 +302,12 @@ func executeCreateSite(task *Task) TaskResult {
 			return TaskResult{Success: false, Message: "生成 wp-config.php 失败"}
 		}
 	}
+	if payload.SiteType != "php" {
+		if err := ConfigureWPLoginFailureLogging(webRoot, logDir, systemUser); err != nil {
+			rollback()
+			return taskFailure("配置 WordPress 真实登录失败审计失败", err)
+		}
+	}
 	if err := HardenSiteSensitivePermissions(domain, webRoot, systemUser); err != nil {
 		rollback()
 		log.Printf("设置站点安全权限失败: %v", err)
@@ -540,6 +547,14 @@ func executeDeleteSite(task *Task) TaskResult {
 	} else if locked {
 		return TaskResult{Success: false, Message: "该网站仍受网站搬家任务保护，不能从网站列表直接删除。请前往「网站搬家」处理该任务"}
 	}
+	if blocked, err := HasSiteBackupArtifacts(context.Background(), site); err != nil {
+		return taskFailure("检查整站备份与恢复现场失败", err)
+	} else if blocked {
+		return TaskResult{Message: "网站仍有整站备份或恢复安全记录，请先管理这些记录"}
+	}
+	if err := cloudflaresecurity.CheckWebsiteDeletion(context.Background(), database.GetDB(), site.ID); err != nil {
+		return taskFailure("Cloudflare 规则仍需清理", err)
+	}
 	cfg := config.AppConfig
 
 	webRoot, err := managedSubpath(cfg.Paths.WWWRoot, site.WebRoot, "网站目录")
@@ -592,7 +607,7 @@ func executeDeleteSite(task *Task) TaskResult {
 	// final SQLite cleanup later fails (or the process stops), the surviving row
 	// must not continue to look like a usable website. Re-running delete accepts
 	// the existing deleting state and finishes the idempotent cleanup.
-	if err := markWebsiteDeleting(db, site.ID); err != nil {
+	if err := cloudflaresecurity.BeginWebsiteDeletion(context.Background(), db, site.ID); err != nil {
 		return TaskResult{Success: false, Message: "标记网站删除状态失败: " + err.Error()}
 	}
 
@@ -725,6 +740,9 @@ func deleteSiteAndAssociatedCronJobs(db *sql.DB, siteID int) (bool, error) {
 		return false, err
 	}
 	cronRows, _ := res.RowsAffected()
+	if err := cloudflaresecurity.CheckWebsiteDeletion(context.Background(), tx, siteID); err != nil {
+		return false, err
+	}
 	if _, err := tx.Exec("DELETE FROM websites WHERE id = ?", siteID); err != nil {
 		return false, err
 	}
@@ -1000,6 +1018,16 @@ func executeUpdateDomains(task *Task) TaskResult {
 	}
 	if blocked := rejectPausedSiteConfiguration(site.ID); blocked != nil {
 		return *blocked
+	}
+	if newDomain := strings.ToLower(strings.TrimSpace(payload.NewDomain)); newDomain != "" && newDomain != site.Domain {
+		if blocked, err := HasSiteBackupArtifacts(context.Background(), site); err != nil {
+			return taskFailure("检查整站备份与恢复现场失败", err)
+		} else if blocked {
+			return TaskResult{Message: "网站仍有整站备份或恢复安全记录，不能更换主域名"}
+		}
+		if err := cloudflaresecurity.CheckWebsiteDeletion(context.Background(), database.GetDB(), site.ID); err != nil {
+			return taskFailure("请先停用并清理原域名的 Cloudflare 规则", err)
+		}
 	}
 	cfg := config.AppConfig
 
@@ -1413,6 +1441,10 @@ func ReinstallWordPress(ctx context.Context, webRoot, dbName, dbUser, systemUser
 
 	if err := generateWPConfig(tmpWebRoot, filepath.Base(webRoot), dbName, dbUser, dbPassword); err != nil {
 		return fmt.Errorf("生成 wp-config.php 失败: %w", err)
+	}
+
+	if err := ConfigureWPLoginFailureLogging(tmpWebRoot, sitePHPLogDir(filepath.Base(webRoot)), systemUser); err != nil {
+		return err
 	}
 
 	if _, err := executeCommand("chown", "-R", siteOwner(systemUser), tmpWebRoot); err != nil {

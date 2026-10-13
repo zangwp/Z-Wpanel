@@ -1819,7 +1819,7 @@ func testPageData(content string) map[string]any {
 		"AssetPrefix":     "/test/assets",
 		"CSRFToken":       "test",
 		"Lang":            i18n.DefaultLang,
-		"MessagesJSON":    i18n.MessagesJSON(i18n.DefaultLang, i18nKeys),
+		"MessagesJSON":    i18n.MessagesJSON(i18n.DefaultLang, i18n.AllMessageKeys()),
 	}
 }
 

@@ -74,15 +74,14 @@ ignoreregex =
 // Fail2ban 侧解析完整 $request 文本，不能挪到 Nginx map 里用 $arg_action 做）。
 const fail2banLoginFilterConfig = `# YUB WPanel Generated — DO NOT EDIT MANUALLY
 [Definition]
-failregex = ^<HOST> .* "POST [^"]*" 200 .*$
-            ^<HOST> .* "POST [^"]*" 403 .*$
+datepattern = %%Y-%%m-%%dT%%H:%%M:%%S%%z
+failregex = ^<HOST> \[(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?\] YUB_WPANEL_LOGIN_FAILED$
 ignoreregex =
-              ^<HOST> .* "POST /wp-login\.php\?(?:[A-Za-z0-9_.~-]+=[^&"]*&)*action=(?:confirm_admin_email|postpass|logout|lostpassword|retrievepassword|resetpass|rp|register|checkemail|confirmaction|entered_recovery_mode)(?:&(?!action=)[A-Za-z0-9_.~-]+=[^&"]*)* HTTP/[^"]+" 200 .*$
 `
 
 const fail2banSQLiFilterConfig = `# YUB WPanel Generated — DO NOT EDIT MANUALLY
 [Definition]
-failregex = ^<HOST> .* "[A-Z]+ [^"]*" 403 .*$
+failregex = ^<HOST> \S+ \S+ \[[^\]]*\] "[A-Z]+ [^"]*" 403 [0-9]+(?: "[^"]*" "[^"]*")?(?: peer=(?:-|[0-9a-fA-F:.]+))? yub_security="sqli" yub_autoban="1"$
 ignoreregex =
 `
 
@@ -1960,6 +1959,7 @@ func CleanExpiredBans() {
 }
 
 func StartFail2banSyncScheduler() {
+	StartCloudflareWebsiteSyncScheduler()
 	GoSafe(func() {
 		SyncFail2banBans()
 		CleanExpiredBans()

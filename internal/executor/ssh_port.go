@@ -107,9 +107,9 @@ func inspectSSHPort(ctx context.Context) SSHPortStatus {
 	if !owned {
 		return fail("配置端口与实际 SSH 监听不一致")
 	}
-	enabled, _, e := readAccessState(ctx)
-	if e != nil || !enabled {
-		return fail("请先应用上方端口访问策略，才能联动迁移 SSH 放行来源")
+	_, _, e = sshMigrationAccessState(ctx, s.Port)
+	if e != nil {
+		return fail(e.Error())
 	}
 	_, _, _, _, warning, writable := firewallPortTarget(ctx)
 	if !writable {
@@ -134,7 +134,7 @@ func GetSSHPortStatus() SSHPortStatus {
 }
 
 func writeSSHFile(path string, data []byte, mode os.FileMode) error {
-	tmp, e := os.CreateTemp(filepath.Dir(path), ".yub-ssh-*")
+	tmp, e := os.CreateTemp(filepath.Dir(path), ".ols-ssh-*")
 	if e != nil {
 		return e
 	}
@@ -171,7 +171,14 @@ func reloadSSHJail(ctx context.Context) error {
 
 func waitSSHListener(ctx context.Context, port int) error {
 	for attempt := 0; attempt < 15; attempt++ {
-		for _, l := range detectListeners(ctx) {
+		listeners, err := readFirewallListeners(ctx, true)
+		if err != nil {
+			return err
+		}
+		for _, l := range listeners {
+			if l.Protocol == "tcp" && l.Port == port && l.Process == "" {
+				return errors.New("无法核对新 SSH 端口的监听进程")
+			}
 			if l.Protocol == "tcp" && l.Port == port && strings.Contains(l.Process, "sshd") {
 				return nil
 			}
@@ -187,8 +194,15 @@ func waitSSHListener(ctx context.Context, port int) error {
 
 func waitSSHRetired(ctx context.Context, port int) error {
 	for attempt := 0; attempt < 15; attempt++ {
+		listeners, err := readFirewallListeners(ctx, true)
+		if err != nil {
+			return err
+		}
 		present := false
-		for _, l := range detectListeners(ctx) {
+		for _, l := range listeners {
+			if l.Protocol == "tcp" && l.Port == port && l.Process == "" {
+				return errors.New("无法核对原 SSH 端口的监听进程，不能确认已关闭")
+			}
 			if l.Protocol == "tcp" && l.Port == port && strings.Contains(l.Process, "sshd") {
 				present = true
 			}
@@ -217,7 +231,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 	if newPort < 1 || newPort > 65535 || newPort == s.Port {
 		return SSHPortChange{}, errors.New("请输入不同于当前端口的有效端口")
 	}
-	for _, reserved := range []int{80, 443, 3306, 6379} {
+	for _, reserved := range []int{80, 443, 3306, 6379, 7080} {
 		if newPort == reserved {
 			return SSHPortChange{}, errors.New("该端口保留给网站、数据库或 WebAdmin，请选择其他 SSH 端口")
 		}
@@ -235,7 +249,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 	if net.ParseIP(managementIP) == nil {
 		return SSHPortChange{}, errors.New("无法识别管理 IP")
 	}
-	_, rules, e := readAccessState(ctx)
+	accessExists, rules, e := sshMigrationAccessState(ctx, s.Port)
 	if e != nil {
 		return SSHPortChange{}, e
 	}
@@ -277,7 +291,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 		return SSHPortChange{}, e
 	}
 	final, _ := sshPortConfig(string(original), newPort)
-	dir, e := os.MkdirTemp(sshMoveRunDirectory, "yub-ssh-port-*")
+	dir, e := os.MkdirTemp(sshMoveRunDirectory, "ols-ssh-port-*")
 	if e != nil {
 		return SSHPortChange{}, e
 	}
@@ -287,7 +301,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 			_ = os.RemoveAll(dir)
 		}
 	}()
-	for name, data := range map[string]string{"original": string(original), "dual": dual, "final": final, "dual.nft": accessRulesScript(dualRules, true), "final.nft": accessRulesScript(finalRules, true)} {
+	for name, data := range map[string]string{"original": string(original), "dual": dual, "final": final, "dual.nft": accessRulesScript(dualRules, accessExists), "final.nft": accessRulesScript(finalRules, true)} {
 		if e = os.WriteFile(filepath.Join(dir, name), []byte(data), 0600); e != nil {
 			return SSHPortChange{}, e
 		}
@@ -304,9 +318,12 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 			return SSHPortChange{}, err
 		}
 	}
-	prior, e := portCommand(ctx, "nft", "--stateless", "list", "table", "inet", accessTable)
-	if e != nil {
-		return SSHPortChange{}, e
+	prior := ""
+	if accessExists {
+		prior, e = portCommand(ctx, "nft", "--stateless", "list", "table", "inet", accessTable)
+		if e != nil {
+			return SSHPortChange{}, e
+		}
 	}
 	if e = os.WriteFile(filepath.Join(dir, "restore.nft"), []byte("add table inet "+accessTable+"\ndelete table inet "+accessTable+"\n"+prior+"\n"), 0600); e != nil {
 		return SSHPortChange{}, e
@@ -316,7 +333,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 	if e != nil {
 		return SSHPortChange{}, e
 	}
-	tag := "yub-ssh-move-" + token
+	tag := "ols-ssh-move-" + token
 	var allows strings.Builder
 	for _, r := range finalRules {
 		if r.Port == newPort && r.Protocol == "tcp" {
@@ -376,7 +393,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 	if e = os.WriteFile(filepath.Join(dir, "rollback.sh"), []byte(rollback), 0700); e != nil {
 		return SSHPortChange{}, e
 	}
-	verify := "#!/bin/sh\nset -eu\n[ \"$(id -u)\" = 0 ] || exit 1\n[ \"${1-}\" = " + shellLiteral(token) + " ] || exit 1\nset -- ${YUB_SSH_CONNECTION-}\n[ \"${4-}\" = " + shellLiteral(strconv.Itoa(newPort)) + " ] || { echo 'Please run this command in the NEW SSH connection'; exit 1; }\n[ -f " + shellLiteral(filepath.Join(dir, "pending")) + " ] || exit 1\nprintf '%s' " + shellLiteral(token) + " > " + shellLiteral(filepath.Join(dir, "verified")) + "\necho 'New SSH port verified. Return to the panel to save.'\n"
+	verify := "#!/bin/sh\nset -eu\numask 077\n[ \"$(id -u)\" = 0 ] || exit 1\n[ \"${1-}\" = " + shellLiteral(token) + " ] || exit 1\nset -- ${OLS_SSH_CONNECTION-}\n[ \"${4-}\" = " + shellLiteral(strconv.Itoa(newPort)) + " ] || { echo 'Please run this command in the NEW SSH connection'; exit 1; }\n[ -f " + shellLiteral(filepath.Join(dir, "pending")) + " ] || exit 1\nprintf '%s' " + shellLiteral(token) + " > " + shellLiteral(filepath.Join(dir, "verified")) + "\necho 'New SSH port verified. Return to the panel to save.'\n"
 	if e = os.WriteFile(filepath.Join(dir, "verify.sh"), []byte(verify), 0700); e != nil {
 		return SSHPortChange{}, e
 	}
@@ -420,7 +437,7 @@ func BeginSSHPortChange(newPort int, managementIP string) (SSHPortChange, error)
 	if e = waitSSHListener(ctx, newPort); e != nil {
 		return failed(e)
 	}
-	sshMove.SSHPortChange = SSHPortChange{Token: token, OldPort: s.Port, NewPort: newPort, Deadline: started.Add(240 * time.Second), VerifyCommand: "sudo env YUB_SSH_CONNECTION=\"$SSH_CONNECTION\" /bin/sh " + shellLiteral(filepath.Join(dir, "verify.sh")) + " " + shellLiteral(token)}
+	sshMove.SSHPortChange = SSHPortChange{Token: token, OldPort: s.Port, NewPort: newPort, Deadline: started.Add(240 * time.Second), VerifyCommand: "sudo env OLS_SSH_CONNECTION=\"$SSH_CONNECTION\" /bin/sh " + shellLiteral(filepath.Join(dir, "verify.sh")) + " " + shellLiteral(token)}
 	sshMove.dir = dir
 	sshMove.service = s.Service
 	sshMove.expectedConfig = dual

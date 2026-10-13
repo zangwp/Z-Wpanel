@@ -7,7 +7,7 @@ import (
 
 func TestSitePHPOpenBaseDir(t *testing.T) {
 	got := sitePHPOpenBaseDir("/www/wwwroot/example.com", "example.com")
-	want := "/www/wwwroot/example.com:/tmp:/usr/share/php:/var/yub-wpanel/site-secrets/example.com"
+	want := "/www/wwwroot/example.com:/tmp:/usr/share/php:/var/yub-wpanel/site-secrets/example.com:/www/wwwlogs/example.com"
 	if got != want {
 		t.Fatalf("sitePHPOpenBaseDir() = %q, want %q", got, want)
 	}
@@ -26,7 +26,7 @@ func TestSitePHPRunnerOpenBaseDir(t *testing.T) {
 		"example.com",
 		"/var/yub-wpanel/runners/wp-inventory/0123456789abcdef",
 	)
-	want := "/www/wwwroot/example.com:/tmp:/usr/share/php:/var/yub-wpanel/site-secrets/example.com:/var/yub-wpanel/runners/wp-inventory/0123456789abcdef"
+	want := "/www/wwwroot/example.com:/tmp:/usr/share/php:/var/yub-wpanel/site-secrets/example.com:/www/wwwlogs/example.com:/var/yub-wpanel/runners/wp-inventory/0123456789abcdef"
 	if got != want {
 		t.Fatalf("sitePHPRunnerOpenBaseDir() = %q, want %q", got, want)
 	}

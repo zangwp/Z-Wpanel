@@ -3,6 +3,7 @@ package executor
 import (
 	"bufio"
 	"compress/gzip"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -44,8 +45,9 @@ func ReconcileInterruptedLogAnalysisJobs(db *sql.DB) (int64, error) {
 
 var combinedLogPattern = regexp.MustCompile(`^(\S+) \S+ \S+ \[([^]]+)\] "(\S+) ([^ ]+) [^"]+" (\d{3}) \S+ "[^"]*" "([^"]*)"`)
 var accessLogPeerPattern = regexp.MustCompile(`(?:^|\s)peer=(\S+)\s*$`)
+var nativeAccessLogPeerPattern = regexp.MustCompile(`(?:^|\s)peer=(\S+) ols_security="(?:sqli|sensitive|uploads_php|xmlrpc|-)" ols_autoban="[01-]"$`)
 var bracketTimePattern = regexp.MustCompile(`^\[([^]]+)\]`)
-var nginxTimePattern = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`)
+var webTimePattern = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`)
 var logAnalysisIPv4Pattern = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 var logAnalysisSecretPattern = regexp.MustCompile(`(?i)(password|passwd|token|api[_-]?key|authorization|cookie)([=: ]+)([^\s&"']+)`)
 var logAnalysisWebRootPattern = regexp.MustCompile(`/www/wwwroot/[^/\s]+`)
@@ -73,12 +75,21 @@ type logAnalysisAccumulator struct {
 // AnalyzeWebsiteLogs scans all current and rotated site logs and keeps only
 // records whose own timestamp falls inside the requested interval.
 func AnalyzeWebsiteLogs(site *models.Website, startAt, endAt time.Time, db *sql.DB, lang string) (*models.LogAnalysisReport, error) {
+	return AnalyzeWebsiteLogsContext(context.Background(), site, startAt, endAt, db, lang)
+}
+
+func AnalyzeWebsiteLogsContext(ctx context.Context, site *models.Website, startAt, endAt time.Time, db *sql.DB, lang string) (*models.LogAnalysisReport, error) {
 	if site == nil || site.ID <= 0 {
 		return nil, fmt.Errorf("website not found")
 	}
 	if !startAt.Before(endAt) || endAt.Sub(startAt) > 7*24*time.Hour {
 		return nil, fmt.Errorf("invalid analysis time range")
 	}
+	ctx, release, err := acquireLogAnalysisScan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	cleanDir := filepath.Clean(site.LogDir)
 	if !filepath.IsAbs(cleanDir) {
 		return nil, fmt.Errorf("invalid site log directory")
@@ -125,12 +136,15 @@ func AnalyzeWebsiteLogs(site *models.Website, startAt, endAt time.Time, db *sql.
 			report.Truncated = true
 			break
 		}
-		if err := acc.scanFile(path, startAt, endAt); err != nil {
-			continue
+		if err := acc.scanFileContext(ctx, path, startAt, endAt); err != nil {
+			return nil, fmt.Errorf("scan %s: %w", filepath.Base(path), err)
 		}
 		report.FilesScanned++
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	report.UniqueIPs = len(acc.uniqueIPs)
 	report.StatusCodes = sortedCounts(acc.status, 0)
 	report.HourlyRequests = sortedNamedCounts(acc.hourly)
@@ -184,6 +198,13 @@ func sortLogFilesNewestFirst(files []string) {
 }
 
 func (a *logAnalysisAccumulator) scanFile(path string, startAt, endAt time.Time) error {
+	return a.scanFileContext(context.Background(), path, startAt, endAt)
+}
+
+func (a *logAnalysisAccumulator) scanFileContext(ctx context.Context, path string, startAt, endAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	a.lastLineTime = time.Time{}
 	f, err := os.Open(path)
 	if err != nil {
@@ -203,6 +224,9 @@ func (a *logAnalysisAccumulator) scanFile(path string, startAt, endAt time.Time)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	base := filepath.Base(path)
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		line := scanner.Text()
 		a.report.BytesScanned += int64(len(line) + 1)
 		a.report.LinesScanned++
@@ -216,7 +240,10 @@ func (a *logAnalysisAccumulator) scanFile(path string, startAt, endAt time.Time)
 			a.consumeError(line, base, startAt, endAt)
 		}
 	}
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func (a *logAnalysisAccumulator) consumeAccess(line string, security bool, startAt, endAt time.Time) {
@@ -301,7 +328,7 @@ func (a *logAnalysisAccumulator) consumeError(line, base string, startAt, endAt 
 }
 
 func parseErrorLogTime(line string) (time.Time, bool) {
-	if m := nginxTimePattern.FindStringSubmatch(line); len(m) == 2 {
+	if m := webTimePattern.FindStringSubmatch(line); len(m) == 2 {
 		t, err := time.ParseInLocation("2006/01/02 15:04:05", m[1], time.Local)
 		return t, err == nil
 	}
@@ -419,6 +446,13 @@ func (a *logAnalysisAccumulator) buildFindings() {
 }
 
 func accessLogPeer(line string) string {
+	if m := nativeAccessLogPeerPattern.FindStringSubmatch(line); len(m) == 2 {
+		peer := strings.TrimSpace(m[1])
+		if peer == "-" || net.ParseIP(peer) != nil {
+			return peer
+		}
+		return ""
+	}
 	m := accessLogPeerPattern.FindStringSubmatch(line)
 	if len(m) != 2 {
 		return ""

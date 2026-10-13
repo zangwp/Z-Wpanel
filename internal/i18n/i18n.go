@@ -144,3 +144,18 @@ func lookup(lang, key string) string {
 	}
 	return text
 }
+
+// AllMessageKeys exposes translation identifiers, never template source or data.
+func AllMessageKeys() []string {
+	seen := map[string]bool{}
+	keys := []string{}
+	for _, locale := range messages {
+		for key := range locale {
+			if !seen[key] {
+				seen[key] = true
+				keys = append(keys, key)
+			}
+		}
+	}
+	return keys
+}

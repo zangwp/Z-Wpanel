@@ -56,6 +56,9 @@ type FirewallListener struct {
 }
 
 type FirewallPortStatus struct {
+	AccessChangeID         string               `json:"access_change_id,omitempty"`
+	AccessChangeState      string               `json:"access_change_state"`
+	AccessChangeError      string               `json:"access_change_error,omitempty"`
 	AccessEnabled          bool                 `json:"access_enabled"`
 	AccessRules            []FirewallAccessRule `json:"access_rules"`
 	AccessAvailable        bool                 `json:"access_available"`
@@ -92,8 +95,11 @@ type FirewallPortRuleRequest struct {
 }
 
 type FirewallProtectionResult struct {
-	ConfirmationToken string    `json:"confirmation_token"`
-	Deadline          time.Time `json:"deadline"`
+	ChangeID             string    `json:"change_id,omitempty"`
+	RequiresConfirmation bool      `json:"requires_confirmation"`
+	Saved                bool      `json:"saved"`
+	ConfirmationToken    string    `json:"confirmation_token"`
+	Deadline             time.Time `json:"deadline"`
 }
 
 type managedRuleRuntime struct {
@@ -388,6 +394,8 @@ func loadFirewallPortRules(db *sql.DB) ([]FirewallPortRule, error) {
 }
 
 func GetFirewallPortStatus() (FirewallPortStatus, error) {
+	portRulesMu.Lock()
+	defer portRulesMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	family, table, chain, policy, warning, writable := firewallPortTarget(ctx)
@@ -429,12 +437,10 @@ func GetFirewallPortStatus() (FirewallPortStatus, error) {
 		}
 	}
 	anomalies += dangerousListeners
-	panelPort := 8443
-	if config.AppConfig != nil && config.AppConfig.Panel.TLSPort > 0 {
-		panelPort = config.AppConfig.Panel.TLSPort
-	}
+	panelPort, _ := PanelListenEndpoint(config.AppConfig)
 	pending, deadline := firewallProtectionPending()
 	accessEnabled, accessRules, accessErr := readAccessState(ctx)
+	change := inspectFirewallAccessChange(ctx)
 	if accessEnabled {
 		for i := range listeners {
 			if listeners[i].BindScope != "local" {
@@ -445,6 +451,7 @@ func GetFirewallPortStatus() (FirewallPortStatus, error) {
 	canProtect := runtime.GOOS == "linux" && writable && policy == "accept" && systemdRunAvailable()
 	return FirewallPortStatus{
 		AccessEnabled: accessEnabled, AccessRules: accessRules, AccessAvailable: writable && accessErr == nil && systemdRunAvailable(),
+		AccessChangeID: change.ID, AccessChangeState: change.State, AccessChangeError: change.Error,
 		Backend: "nftables", Writable: writable, Warning: warning, InputPolicy: policy, RecommendedPolicy: "drop",
 		SSHPort: detectSSHPort(ctx, listeners), PanelPort: panelPort,
 		ManagedRuleCount: len(rules), AnomalyCount: anomalies,
@@ -914,4 +921,75 @@ func StartFirewallPortRuleManager() {
 			_ = ReconcileFirewallPortRules()
 		}
 	})
+}
+
+func readFirewallListeners(ctx context.Context, requireComplete bool) ([]FirewallListener, error) {
+	out, err := portCommand(ctx, "ss", "-H", "-lntup")
+	if err != nil {
+		return []FirewallListener{}, fmt.Errorf("读取本机监听失败: %w", err)
+	}
+	seen := make(map[string]FirewallListener)
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			if requireComplete {
+				return nil, errors.New("本机监听输出不完整，无法验证 SSH 端口")
+			}
+			continue
+		}
+		proto := strings.ToLower(fields[0])
+		if strings.HasPrefix(proto, "tcp") {
+			proto = "tcp"
+		} else if strings.HasPrefix(proto, "udp") {
+			proto = "udp"
+		} else {
+			if requireComplete {
+				return nil, errors.New("本机监听协议无法识别，无法验证 SSH 端口")
+			}
+			continue
+		}
+		address := fields[4]
+		idx := strings.LastIndex(address, ":")
+		if idx < 0 {
+			if requireComplete {
+				return nil, errors.New("本机监听地址无法识别，无法验证 SSH 端口")
+			}
+			continue
+		}
+		port, err := strconv.Atoi(strings.TrimSuffix(address[idx+1:], "]"))
+		if err != nil || port < 1 || port > 65535 {
+			if requireComplete {
+				return nil, errors.New("本机监听端口无法识别，无法验证 SSH 端口")
+			}
+			continue
+		}
+		process := ""
+		if pos := strings.Index(line, "users:(("); pos >= 0 {
+			process = strings.Trim(line[pos+7:], "()\"")
+			if comma := strings.Index(process, ","); comma >= 0 {
+				process = process[:comma]
+			}
+		}
+		bindAddress := normalizeListenerAddress(address[:idx])
+		bindScope := listenerBindScope(bindAddress)
+		key := proto + ":" + strconv.Itoa(port) + ":" + bindAddress
+		seen[key] = FirewallListener{Protocol: proto, Port: port, Address: bindAddress, Process: process, BindScope: bindScope}
+	}
+	items := make([]FirewallListener, 0, len(seen))
+	for _, item := range seen {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Port == items[j].Port {
+			if items[i].Protocol == items[j].Protocol {
+				return items[i].Address < items[j].Address
+			}
+			return items[i].Protocol < items[j].Protocol
+		}
+		return items[i].Port < items[j].Port
+	})
+	return items, nil
 }

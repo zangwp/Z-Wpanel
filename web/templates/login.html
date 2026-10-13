@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{.Lang}}" class="dark">
+<html lang="{{.Lang}}" class="dark" data-theme="dark" style="color-scheme: dark;">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,13 +35,17 @@
                 </div>
                 <div class="mb-6">
                     <label class="label">{{t .Lang "auth.password"}}</label>
-                    <input type="password" x-model="password" name="password" class="input-field" placeholder="{{t .Lang "auth.password_placeholder"}}" autocomplete="current-password">
+                    <input id="login-password" type="password" x-model="password" name="password" class="input-field" placeholder="{{t .Lang "auth.password_placeholder"}}" autocomplete="current-password">
                 </div>
 
                 <div x-cloak x-show="error" class="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm"
                      x-text="error"></div>
 
-                <button type="submit" class="btn-primary w-full" :disabled="!username || !password">
+                <div x-show="mfaRequired" x-cloak class="mb-4">
+                <label class="block text-sm text-gray-300 mb-1" for="login-mfa-code">{{t .Lang "account_security.code"}}</label>
+                <input id="login-mfa-code" x-ref="codeInput" type="text" x-model="code" class="input-field w-full" autocomplete="one-time-code" maxlength="64" spellcheck="false" autocapitalize="none">
+            </div>
+            <button type="submit" class="btn-primary w-full" :disabled="!username || !password">
                     {{t .Lang "auth.login"}}
                 </button>
             </form>
@@ -92,31 +96,77 @@
 
     function loginForm() {
         return {
-            username: '',
-            password: '',
-            loading: false,
-            success: false,
-            quote: '',
-            error: '',
-            async login() {
+username: '',
+password: '',
+code: '',
+mfaRequired: false,
+recoveryMode: false,
+loading: false,
+error: '',
+focusCode() {
+                this.$nextTick(() => requestAnimationFrame(() => {
+                    if (this.mfaRequired && !this.loading) this.$refs.codeInput.focus();
+                }));
+            },
+resetMFA() {
+                this.mfaRequired = false;
+                this.recoveryMode = false;
+                this.code = '';
+                this.password = '';
+                this.error = '';
+                this.$nextTick(() => requestAnimationFrame(() => document.getElementById('login-password').focus()));
+            },
+async refreshCSRFToken() {
+                const prefix = document.body.dataset.panelPrefix || '';
+                const response = await fetch(prefix + '/api/auth/csrf-token', {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success || !data.data?.token) {
+                    throw new Error(data.message || t('auth.missing_csrf'));
+                }
+                document.querySelector('meta[name="csrf-token"]').content = data.data.token;
+            },
+async login() {
+                if (this.loading) return;
                 if (!this.username || !this.password) {
                     this.error = t('auth.missing_credentials');
+                    return;
+                }
+                if (this.mfaRequired && !this.code.trim()) {
+                    this.error = t('auth.code_required');
+                    this.focusCode();
                     return;
                 }
                 this.loading = true;
                 this.error = '';
                 try {
-                    const resp = await api('/auth/login', {
-                        method: 'POST',
-                        body: { username: this.username, password: this.password },
-                        silent: true
-                    });
-                    if (resp.success) {
-                        this.success = true;
-                        this.quote = quotes[Math.floor(Math.random() * quotes.length)];
-                        setTimeout(() => {
-                            window.location.href = '/' + document.body.dataset.panelPrefix.replace('/', '') + '/';
-                        }, 1800);
+                    let resp;
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        await this.refreshCSRFToken();
+                        try {
+                            resp = await api('/auth/login', {
+                                method: 'POST',
+                                body: { username: this.username, password: this.password, code: this.code.trim() },
+                                silent: true
+                            });
+                            break;
+                        } catch (e) {
+                            if (e.status !== 403 || attempt > 0) throw e;
+                        }
+                    }
+                    if (resp.success && resp.data?.mfa_required) {
+                        this.mfaRequired = true;
+                        this.code = '';
+                        this.loading = false;
+                        this.focusCode();
+                    } else if (resp.success) {
+                        this.password = '';
+                        this.code = '';
+                        window.location.href = '/' + document.body.dataset.panelPrefix.replace('/', '') + '/';
                     } else {
                         this.error = resp.message || t('auth.login_failed');
                         this.loading = false;
@@ -125,8 +175,10 @@
                     this.error = e.message || t('auth.connect_failed');
                     this.loading = false;
                 }
-            }
-        }
+            },
+success: false,
+quote: ''
+}
     }
     </script>
 </body>

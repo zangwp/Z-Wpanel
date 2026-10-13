@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/zangwp/Z-Wpanel/internal/database"
-	"github.com/zangwp/Z-Wpanel/internal/models"
 )
 
 func setupBackupUsageTestDB(t *testing.T) {
@@ -42,8 +41,8 @@ func setupBackupUsageTestDB(t *testing.T) {
 }
 
 type backupUsageResponse struct {
-	Success bool                      `json:"success"`
-	Data    models.WebsiteBackupUsage `json:"data"`
+	Success bool                   `json:"success"`
+	Data    websiteBackupUsageData `json:"data"`
 }
 
 func TestBackupUsageReturnsZeroWhenNoBackupData(t *testing.T) {

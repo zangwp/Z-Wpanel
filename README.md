@@ -30,11 +30,13 @@ apt-get update && apt-get install -y --no-install-recommends curl wget ca-certif
 |---|---|
 | 网站与 WordPress | 创建网站、搬家、域名管理、核心/插件/主题更新、文件与数据库管理 |
 | 证书与加速 | 自动申请与续期证书、Nginx FastCGI 缓存、Redis 对象缓存、图片优化 |
-| 备份与任务 | 网站与面板备份、SFTP/S3 异地保存；网站详情管理 WP-Cron 与证书续期 |
+| 备份与任务 | 整站恢复点、文件与数据库恢复、面板备份、SFTP/S3 异地保存；网站详情管理 WP-Cron 与证书续期 |
 | VPS 维护 | 资源与服务状态、后台系统更新、DNS、IPv4/IPv6 优先级、Swap、系统语言和校时 |
-| 安全与访问 | 登录保护、Fail2ban、独立白名单、可恢复防火墙策略、自定义 SSH 端口、日志与告警 |
+| 安全与访问 | 双因素登录、会话与审计、Cloudflare 网站防护、Fail2ban、独立白名单、可恢复防火墙策略、自定义 SSH 端口、日志与告警 |
 
 全新安装使用官方稳定软件源和 PHP 8.5；Ubuntu 26.04 使用原生 PHP 8.5 安全更新包。现有安装保留 PHP 与数据库主版本，不自动跨系列升级。详见[软件与平台策略](docs/software-platforms.md)。
+
+面板仅提供暗主题，保留原有背景配色。升级至 v2.4.0 请使用签名安装入口的修复模式；[升级说明](docs/upgrade-compatibility.md)包含数据库与密钥备份要求。
 
 ## SSH 快捷命令
 

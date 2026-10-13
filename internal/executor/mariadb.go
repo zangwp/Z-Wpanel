@@ -2,7 +2,10 @@ package executor
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -11,6 +14,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/zangwp/Z-Wpanel/internal/config"
 	"github.com/zangwp/Z-Wpanel/internal/database"
@@ -18,6 +23,22 @@ import (
 )
 
 var mysqlIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+var (
+	runMariaDBManagementCommand      = exec.Command
+	runMariaDBSizeCommand            = exec.CommandContext
+	mariaDBSizeReadTimeout           = 5 * time.Second
+	runMariaDBPasswordCommand        = exec.CommandContext
+	mariaDBPasswordTimeout           = 30 * time.Second
+	errMariaDBPasswordOutcomeUnknown = errors.New("数据库密码执行结果未确认")
+)
+
+func mariaDBClient() string {
+	if path, err := exec.LookPath("mariadb"); err == nil {
+		return path
+	}
+	return "mysql"
+}
 
 func isValidMySQLIdentifier(name string) bool {
 	return name != "" && len(name) <= 64 && mysqlIdentifierPattern.MatchString(name)
@@ -36,7 +57,7 @@ func wpOptionsTableName(tablePrefix string) (string, error) {
 }
 
 func runMySQL(rootPassword string, args ...string) error {
-	cmd := exec.Command("mysql", args...)
+	cmd := runMariaDBManagementCommand(mariaDBClient(), args...)
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+rootPassword)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -47,7 +68,7 @@ func runMySQL(rootPassword string, args ...string) error {
 }
 
 func runMySQLInput(rootPassword, input string, args ...string) error {
-	cmd := exec.Command("mysql", args...)
+	cmd := runMariaDBManagementCommand(mariaDBClient(), args...)
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+rootPassword)
 	cmd.Stdin = strings.NewReader(input)
 	var stderr bytes.Buffer
@@ -62,7 +83,7 @@ func createMigrationMariaDBDatabase(dbName, dbUser, dbPassword string, cfg *conf
 	if cfg == nil || !isValidMySQLIdentifier(dbName) || !isValidMySQLIdentifier(dbUser) || len(dbPassword) < 24 || !mysqlIdentifierPattern.MatchString(dbPassword) {
 		return fmt.Errorf("invalid migration database identity")
 	}
-	sqlText := fmt.Sprintf("CREATE DATABASE `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nDROP USER IF EXISTS '%s'@'localhost';\nCREATE USER '%s'@'localhost' IDENTIFIED BY '%s';\nGRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';\nFLUSH PRIVILEGES;\n", dbName, dbUser, dbUser, dbPassword, dbName, dbUser)
+	sqlText := fmt.Sprintf("CREATE DATABASE `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nDROP USER IF EXISTS '%s'@'localhost';\nCREATE USER '%s'@'localhost' IDENTIFIED BY '%s';\nGRANT ALL PRIVILEGES ON %s.* TO '%s'@'localhost';\nFLUSH PRIVILEGES;\n", dbName, dbUser, dbUser, dbPassword, databaseImportGrantSchema(dbName), dbUser)
 	return runMySQLInput(cfg.MariaDB.RootPassword, sqlText, "-u", cfg.MariaDB.RootUser)
 }
 
@@ -76,12 +97,18 @@ func GetMariaDBDatabaseSizes(cfg *config.Config) (map[string]int64, error) {
 		FROM INFORMATION_SCHEMA.TABLES
 		WHERE TABLE_SCHEMA NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
 		GROUP BY TABLE_SCHEMA`
-	cmd := exec.Command("mysql", "-u", cfg.MariaDB.RootUser, "-B", "-N", "-e", query)
-	cmd.Env = append(os.Environ(), "MYSQL_PWD="+cfg.MariaDB.RootPassword)
+	ctx, cancel := context.WithTimeout(context.Background(), mariaDBSizeReadTimeout)
+	defer cancel()
+	cmd := runMariaDBSizeCommand(ctx, mariaDBClient(), databaseImportClientArgs(cfg.MariaDB.RootUser, "-B", "-N", "-e", query)...)
+	cmd.Env = databaseImportEnvironment(cfg.MariaDB.RootPassword)
+	configureBackupCommandCancellation(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("query database sizes: %w", ctx.Err())
+		}
 		return nil, fmt.Errorf("query database sizes: %s", strings.TrimSpace(stderr.String()))
 	}
 
@@ -101,6 +128,9 @@ func GetMariaDBDatabaseSizes(cfg *config.Config) (map[string]int64, error) {
 }
 
 func createMariaDBDatabase(dbName, dbUser, dbPassword string, cfg *config.Config) error {
+	if cfg == nil || !isValidMySQLIdentifier(dbName) || !isValidMySQLIdentifier(dbUser) {
+		return fmt.Errorf("invalid database identity")
+	}
 	dbUser = strings.ReplaceAll(dbUser, "'", "''")
 	dbPassword = strings.ReplaceAll(dbPassword, "'", "''")
 
@@ -118,7 +148,7 @@ func createMariaDBDatabase(dbName, dbUser, dbPassword string, cfg *config.Config
 	}
 
 	if err := runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e",
-		fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost'", dbName, dbUser)); err != nil {
+		fmt.Sprintf("GRANT ALL PRIVILEGES ON %s.* TO '%s'@'localhost'", databaseImportGrantSchema(dbName), dbUser)); err != nil {
 		return err
 	}
 
@@ -126,23 +156,82 @@ func createMariaDBDatabase(dbName, dbUser, dbPassword string, cfg *config.Config
 }
 
 func dropMariaDBDatabase(dbName, dbUser string, cfg *config.Config) error {
+	if cfg == nil || !databaseRestoreNameAllowed(dbName) || !isValidMySQLIdentifier(dbUser) {
+		return fmt.Errorf("invalid database deletion identity")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	release, err := lockDatabaseImport(ctx, dbName)
+	if err != nil {
+		return fmt.Errorf("数据库导入尚未结束，未删除数据库")
+	}
+	defer release()
 	if err := runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e", fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName)); err != nil {
 		return err
 	}
 	if err := runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e", fmt.Sprintf("DROP USER IF EXISTS '%s'@'localhost'", dbUser)); err != nil {
 		return err
 	}
+	if err := removeDatabaseImportIdentities(dbName, cfg.MariaDB.RootPassword); err != nil {
+		return fmt.Errorf("数据库已删除，受管导入身份清理失败: %w", err)
+	}
 	return runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e", "FLUSH PRIVILEGES")
 }
 
 func changeMariaDBPassword(dbUser, newPassword string, cfg *config.Config) error {
-	newPassword = strings.ReplaceAll(newPassword, "'", "''")
+	if cfg == nil || !isValidMySQLIdentifier(dbUser) {
+		return fmt.Errorf("invalid database password identity")
+	}
+	if err := validateMariaDBPassword(newPassword); err != nil {
+		return err
+	}
 
-	if err := runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e",
-		fmt.Sprintf("ALTER USER '%s'@'localhost' IDENTIFIED BY '%s'", dbUser, newPassword)); err != nil {
-		return fmt.Errorf("修改数据库密码失败: %w", err)
+	// The dedicated session gives quoted passwords identical semantics regardless
+	// of the server's global sql_mode. Backslashes remain literal; only quotes
+	// need doubling. Neither the SQL nor the new password belongs in argv.
+	sqlText := "SET SESSION sql_mode='NO_BACKSLASH_ESCAPES';\n" +
+		fmt.Sprintf("ALTER USER '%s'@'localhost' IDENTIFIED BY '%s';\n", dbUser, strings.ReplaceAll(newPassword, "'", "''"))
+	ctx, cancel := context.WithTimeout(context.Background(), mariaDBPasswordTimeout)
+	defer cancel()
+	cmd := runMariaDBPasswordCommand(ctx, mariaDBClient(), databaseImportClientArgs(cfg.MariaDB.RootUser)...)
+	cmd.Env = databaseImportEnvironment(cfg.MariaDB.RootPassword)
+	cmd.Stdin = strings.NewReader(sqlText)
+	// Syntax/plugin diagnostics can echo password-bearing SQL. Return only the
+	// process result. A started client's failure does not prove ALTER failed:
+	// the server may have committed before its response or client was lost.
+	cmd.Stderr = io.Discard
+	configureBackupCommandCancellation(cmd)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("数据库密码客户端未启动: %w", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("%w: %w", errMariaDBPasswordOutcomeUnknown, ctx.Err())
+		}
+		return fmt.Errorf("%w: %v", errMariaDBPasswordOutcomeUnknown, err)
 	}
 	return nil
+}
+
+func validateMariaDBPassword(password string) error {
+	if !utf8.ValidString(password) || strings.IndexByte(password, 0) >= 0 {
+		return fmt.Errorf("数据库密码必须是有效 UTF-8 文本，且不能包含 NUL 字符")
+	}
+	return nil
+}
+
+func replaceWordPressDBPassword(content []byte, password string) ([]byte, error) {
+	if err := validateMariaDBPassword(password); err != nil {
+		return nil, err
+	}
+	// Match escaped quotes/backslashes in the previous PHP literal, and use a
+	// callback so password '$' characters are never replacement expansions.
+	re := regexp.MustCompile(`define\(\s*'DB_PASSWORD'\s*,\s*'(?:\\[\s\S]|[^'\\])*'\s*\)`)
+	if !re.Match(content) {
+		return nil, fmt.Errorf("未找到 DB_PASSWORD 定义，wp-config.php 可能格式异常")
+	}
+	replacement := fmt.Sprintf("define('DB_PASSWORD', '%s')", phpSingleQuoteEscape(password))
+	return re.ReplaceAllFunc(content, func([]byte) []byte { return []byte(replacement) }), nil
 }
 
 type dbPasswordConfigWriter func(string, []byte, os.FileMode) error
@@ -155,6 +244,10 @@ func applyWordPressDBPasswordChange(configPath string, oldContent, newContent []
 	}
 
 	if err := changePassword(site.DBUser, newPassword, cfg); err != nil {
+		if errors.Is(err, errMariaDBPasswordOutcomeUnknown) {
+			log.Printf("MariaDB 密码执行结果未确认，保留新 wp-config.php，需核对数据库连接")
+			return TaskResult{Success: false, Message: "数据库密码修改结果未确认，wp-config.php 保留新密码；请核对数据库连接后再操作"}
+		}
 		if rollbackErr := writeConfig(configPath, oldContent, 0600); rollbackErr != nil {
 			log.Printf("MariaDB 操作失败，且 wp-config.php 恢复失败: database_error=%v rollback_error=%v", err, rollbackErr)
 			return TaskResult{Success: false, Message: "数据库密码修改失败，且 wp-config.php 恢复失败，请立即检查网站数据库配置"}
@@ -172,8 +265,11 @@ func applyWordPressDBPasswordChange(configPath string, oldContent, newContent []
 }
 
 func executeChangeDBPassword(task *Task) TaskResult {
+	if task == nil {
+		return TaskResult{Success: false, Message: "任务参数类型错误"}
+	}
 	payload, ok := task.Payload.(*ChangeDBPasswordPayload)
-	if !ok {
+	if !ok || payload == nil || payload.Site == nil {
 		return TaskResult{Success: false, Message: "任务参数类型错误"}
 	}
 
@@ -184,10 +280,19 @@ func executeChangeDBPassword(task *Task) TaskResult {
 	if newPassword == "" {
 		newPassword = generatePassword(24)
 	}
+	if cfg == nil || !isValidMySQLIdentifier(site.DBUser) {
+		return TaskResult{Success: false, Message: "数据库密码参数无效"}
+	}
+	if err := validateMariaDBPassword(newPassword); err != nil {
+		return TaskResult{Success: false, Message: err.Error()}
+	}
 
 	if site.SiteType == "php" {
 		if err := changeMariaDBPassword(site.DBUser, newPassword, cfg); err != nil {
 			log.Printf("MariaDB 操作失败: %v", err)
+			if errors.Is(err, errMariaDBPasswordOutcomeUnknown) {
+				return TaskResult{Success: false, Message: "数据库密码修改结果未确认；请核对数据库连接后再操作"}
+			}
 			return TaskResult{Success: false, Message: "MariaDB 操作失败"}
 		}
 		db := database.GetDB()
@@ -207,15 +312,12 @@ func executeChangeDBPassword(task *Task) TaskResult {
 		return TaskResult{Success: false, Message: "读取 wp-config.php 失败"}
 	}
 
-	re := regexp.MustCompile(`define\(\s*'DB_PASSWORD'\s*,\s*'[^']*'\s*\)`)
-	newContent := re.ReplaceAllString(string(content),
-		fmt.Sprintf("define('DB_PASSWORD', '%s')", phpSingleQuoteEscape(newPassword)))
-
-	if newContent == string(content) {
-		return TaskResult{Success: false, Message: "未找到 DB_PASSWORD 定义，wp-config.php 可能格式异常"}
+	newContent, err := replaceWordPressDBPassword(content, newPassword)
+	if err != nil {
+		return TaskResult{Success: false, Message: err.Error()}
 	}
 
-	result := applyWordPressDBPasswordChange(configPath, content, []byte(newContent), site, newPassword, cfg, os.WriteFile, changeMariaDBPassword)
+	result := applyWordPressDBPasswordChange(configPath, content, newContent, site, newPassword, cfg, os.WriteFile, changeMariaDBPassword)
 	if result.Success {
 		database.GetDB().Exec("UPDATE websites SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", site.ID)
 	}
@@ -228,7 +330,7 @@ func DetectDBTablePrefix(dbName string, cfg *config.Config) (string, []string, e
 	if !isValidMySQLIdentifier(dbName) {
 		return "", nil, fmt.Errorf("invalid database name")
 	}
-	cmd := exec.Command("mysql", "-u", cfg.MariaDB.RootUser, "-N", "-e",
+	cmd := exec.Command(mariaDBClient(), "-u", cfg.MariaDB.RootUser, "-N", "-e",
 		fmt.Sprintf("SHOW TABLES FROM `%s` LIKE '%%options'", dbName))
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+cfg.MariaDB.RootPassword)
 	var stdout, stderr bytes.Buffer
@@ -277,6 +379,9 @@ func tablePrefixFromOptionsTable(tableName string) (string, bool) {
 
 // ReadWPSiteURLs 从 wp_options 读取 siteurl 和 home
 func ReadWPSiteURLs(dbName, tablePrefix string, cfg *config.Config) (siteURL, homeURL string, err error) {
+	if cfg == nil {
+		return "", "", fmt.Errorf("面板配置未初始化")
+	}
 	if !isValidMySQLIdentifier(dbName) {
 		return "", "", fmt.Errorf("invalid database name")
 	}
@@ -287,13 +392,17 @@ func ReadWPSiteURLs(dbName, tablePrefix string, cfg *config.Config) (siteURL, ho
 	query := fmt.Sprintf(
 		"SELECT option_name, option_value FROM `%s`.`%s` WHERE option_name IN ('siteurl','home')",
 		dbName, tableName)
-	cmd := exec.Command("mysql", "-u", cfg.MariaDB.RootUser, "-N", "-e", query)
+	cmd := exec.Command(mariaDBClient(), "-u", cfg.MariaDB.RootUser, "-N", "-e", query)
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+cfg.MariaDB.RootPassword)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", "", fmt.Errorf("查询失败: %s", strings.TrimSpace(stderr.String()))
+		log.Printf("读取 WordPress URL 失败: %s", strings.TrimSpace(stderr.String()))
+		if strings.Contains(stderr.String(), "ERROR 1146") {
+			return "", "", fmt.Errorf("WordPress options 表不存在，请检查数据库与 wp-config.php 中的表前缀；尚未安装 WordPress 的站点也会出现此状态")
+		}
+		return "", "", fmt.Errorf("无法读取 WordPress URL，请检查数据库连接；详细原因已写入面板日志")
 	}
 
 	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
@@ -329,7 +438,7 @@ func ReadWPDiagnosticOptions(dbName, tablePrefix string, cfg *config.Config) (ma
 	query := fmt.Sprintf(
 		"SELECT option_name, option_value FROM `%s`.`%s` WHERE option_name IN ('template','stylesheet','active_plugins')",
 		dbName, tableName)
-	cmd := exec.Command("mysql", "-u", cfg.MariaDB.RootUser, "-N", "-e", query)
+	cmd := exec.Command(mariaDBClient(), "-u", cfg.MariaDB.RootUser, "-N", "-e", query)
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+cfg.MariaDB.RootPassword)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -403,9 +512,7 @@ func UpdateWPSiteURLs(dbName, tablePrefix, newSiteURL, newHomeURL string, cfg *c
 	return nil
 }
 
-func maskPassword(pw string) string {
-	if len(pw) < 8 {
-		return "****"
-	}
-	return pw[:4] + "****" + pw[len(pw)-4:]
+func maskPassword(_ string) string {
+	// A fixed mask reveals neither password fragments nor its byte length.
+	return "********"
 }

@@ -950,6 +950,22 @@ create_repair_backup() {
     install -d -m 0700 "$REPAIR_BACKUP_DIR"
 
     install -m 0600 "$CONFIG_FILE" "$REPAIR_BACKUP_DIR/config.json"
+    # Preserve the separate MFA encryption key alongside the private repair
+    # snapshot. Ordinary downloadable database backups deliberately exclude it.
+    local account_mfa_key="${DB_PATH%/*}/account-mfa.key"
+    if [[ -e "$account_mfa_key" ]] || [[ -L "$account_mfa_key" ]]; then
+        [[ -f "$account_mfa_key" ]] && [[ ! -L "$account_mfa_key" ]] || \
+            log_error "repair前双因素认证密钥不是安全常规文件"
+        install -m 0600 "$account_mfa_key" "$REPAIR_BACKUP_DIR/account-mfa.key"
+    fi
+    # Website API credentials use a separate key too. Include it in the
+    # private repair snapshot; the downloadable SQLite backup excludes keys.
+    local cloudflare_security_key="${DB_PATH%/*}/cloudflare-security.key"
+    if [[ -e "$cloudflare_security_key" ]] || [[ -L "$cloudflare_security_key" ]]; then
+        [[ -f "$cloudflare_security_key" ]] && [[ ! -L "$cloudflare_security_key" ]] || \
+            log_error "repair前Cloudflare凭据密钥不是安全常规文件"
+        install -m 0600 "$cloudflare_security_key" "$REPAIR_BACKUP_DIR/cloudflare-security.key"
+    fi
     if [[ -f "$DB_PATH" ]]; then
         sqlite3 "$DB_PATH" ".timeout 10000" ".backup $REPAIR_BACKUP_DIR/panel.db"
         [[ "$(sqlite3 "$REPAIR_BACKUP_DIR/panel.db" 'PRAGMA integrity_check;')" == "ok" ]] || \

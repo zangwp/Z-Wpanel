@@ -1,14 +1,39 @@
 {{template "base" .}}
 {{define "settings_content"}}
-<div x-data="panelSettings()" x-init="initPage()">
+<style>
+.settings-page .settings-general-layout { display: grid; gap: 24px; margin-bottom: 24px; }
+.settings-page .settings-account-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 20px; }
+.settings-page .settings-account-grid, .settings-page .settings-server-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.settings-page .settings-credentials { display: flex; flex-direction: column; min-width: 0; padding: 22px; border: 1px solid var(--panel-border); border-radius: 9px; background: var(--panel-surface-alt); }
+.settings-page .settings-credentials h4 { font-size: 15px; font-weight: 650; margin-bottom: 5px; }
+.settings-page .settings-credentials-description { color: var(--panel-muted); font-size: 13px; line-height: 1.7; margin-bottom: 20px; }
+.settings-page .settings-field { min-width: 0; margin-bottom: 16px; }
+.settings-page .settings-field > label { display: block; font-size: 13px; color: var(--panel-text); font-weight: 550; margin-bottom: 6px; }
+.settings-page .settings-field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.settings-page .settings-verification { margin-top: 2px; padding-top: 18px; border-top: 1px solid var(--panel-border); }
+.settings-page .settings-account-action { margin-top: auto; padding-top: 4px; }
+.settings-page .settings-account-action button { width: 100%; }
+.settings-page .settings-label-help { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.settings-page .settings-label-help .label, .settings-page .settings-label-help h3 { margin: 0; }
+.settings-page .settings-label-help .help-tip { margin: 0; }
+.settings-page .settings-server-time { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-top: 10px; font-size: 12px; }
+.settings-page .settings-server-time time { display: block; color: var(--panel-text); font-variant-numeric: tabular-nums; margin-top: 3px; }
+.settings-page .settings-certificate { margin-top: 8px; padding-top: 24px; border-top: 1px solid var(--panel-border); }
+.settings-page .settings-domain-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.settings-page .settings-certificate-status { margin-top: 16px; padding: 16px; border: 1px solid var(--panel-border); border-radius: 7px; background: var(--panel-surface-alt); }
+.settings-page .settings-certificate-status a { overflow-wrap: anywhere; }
+@media (max-width: 850px) { .settings-page .settings-account-grid, .settings-page .settings-server-fields { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) { .settings-page .settings-credentials { padding: 17px; } .settings-page .settings-field-pair { grid-template-columns: minmax(0, 1fr); gap: 0; } .settings-page .settings-domain-actions > button { flex: 1 1 auto; } }
+</style>
+<div class="settings-page" x-data="panelSettings()" x-init="initPage()">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-            <h2 class="text-xl font-bold text-white">{{t .Lang "nav.settings"}}</h2>
+            <h1 class="page-title">{{t .Lang "nav.settings"}}</h1>
             <p class="text-sm text-gray-400 mt-1">{{t .Lang "settings.page_description"}}</p>
         </div>
     </div>
 
-    <nav class="settings-section-nav card mb-6 p-2 sticky top-0 z-20" aria-label="{{t .Lang "settings.section_navigation"}}">
+    <nav class="settings-section-nav card mb-6 p-2" aria-label="{{t .Lang "settings.section_navigation"}}">
         <div class="flex flex-wrap gap-2">
             <button type="button" @click="setSection('general')" :class="sectionButtonClass('general')">{{t .Lang "settings.section_general"}}</button>
             <button type="button" @click="setSection('updates')" :class="sectionButtonClass('updates')">{{t .Lang "settings.section_updates"}}</button>
@@ -18,60 +43,70 @@
         </div>
     </nav>
 
-    <div x-show="activeSection === 'general' || activeSection === 'updates'" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start mb-6">
+    <div x-show="activeSection === 'general' || activeSection === 'updates'" x-cloak class="settings-general-layout">
         <div x-show="activeSection === 'general'" class="card">
-            <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.account_security"}}</h3>
-
-            <div class="mb-4 p-4 rounded" style="background-color: #0f172a;">
-                <p class="text-xs text-blue-400 font-medium mb-2">{{t .Lang "settings.basic_auth_title"}}</p>
-                <p class="text-xs text-gray-500 mb-3">{{t .Lang "settings.basic_auth_desc"}}</p>
-                <div class="mb-3">
-                    <label class="text-xs text-gray-400">{{t .Lang "auth.username"}}</label>
-                    <input type="text" x-model="basicAuthUser" class="input-field text-sm py-1.5 mt-1">
-                </div>
-                <div>
-                    <label class="text-xs text-gray-400">{{t .Lang "settings.password_keep"}}</label>
-                    <input type="password" x-model="pw.basic" class="input-field text-sm py-1.5 mt-1" placeholder="{{t .Lang "settings.leave_unchanged_placeholder"}}" autocomplete="new-password">
-                </div>
-                <button @click="saveBasicAuth" :disabled="accountSaving" class="btn-primary w-full mt-4" x-text="accountSaving ? t('settings.saving') : t('settings.save_basic_auth')"></button>
+            <div class="settings-account-heading">
+                <h3 class="text-lg font-semibold text-white">{{t .Lang "settings.account_security"}}</h3>
+                <a class="text-sm text-blue-400 hover:underline" href="/{{.RandomSuffix}}/security#account">{{t .Lang "settings.security_center_link"}}</a>
             </div>
-
-            <div class="p-4 rounded" style="background-color: #0f172a;">
-                <p class="text-xs text-green-400 font-medium mb-2">{{t .Lang "settings.web_login_title"}}</p>
-                <p class="text-xs text-gray-500 mb-3">{{t .Lang "settings.web_login_desc"}}</p>
-                <div class="mb-3">
-                    <label class="text-xs text-gray-400">{{t .Lang "auth.username"}}</label>
-                    <input type="text" x-model="username" class="input-field text-sm py-1.5 mt-1">
-                </div>
-                <div>
-                    <label class="text-xs text-gray-400">{{t .Lang "settings.password_keep"}}</label>
-                    <input type="password" x-model="pw.old" class="input-field text-sm py-1.5 mt-1" placeholder="{{t .Lang "settings.current_password_placeholder"}}" autocomplete="current-password">
-                    <div class="flex space-x-2 mt-2">
-                        <input type="password" x-model="pw.new1" class="input-field flex-1 text-sm py-1.5" placeholder="{{t .Lang "settings.new_password_placeholder"}}" autocomplete="new-password">
-                        <input type="password" x-model="pw.new2" class="input-field flex-1 text-sm py-1.5" placeholder="{{t .Lang "settings.confirm_new_password_placeholder"}}">
+            <div x-show="accountLoadError" x-cloak role="alert" class="text-sm text-red-400 mb-4"><span x-text="accountLoadError"></span> <button type="button" class="underline" @click="fetchSettings()">{{t .Lang "common.retry"}}</button></div>
+            <div class="settings-account-grid">
+                <form class="settings-credentials" aria-labelledby="basic-auth-heading" @submit.prevent="saveBasicAuth()">
+                    <h4 id="basic-auth-heading">{{t .Lang "settings.basic_auth_title"}}</h4>
+                    <p class="settings-credentials-description">{{t .Lang "settings.basic_auth_desc"}}</p>
+                    <div class="settings-field"><label for="basic-auth-username">{{t .Lang "auth.username"}}</label><input id="basic-auth-username" type="text" x-model="basicAuthUser" class="input-field text-sm" autocomplete="username"></div>
+                    <div class="settings-field"><label for="basic-new-password">{{t .Lang "settings.password_keep"}}</label><input id="basic-new-password" type="password" x-model="pw.basic" class="input-field text-sm" placeholder="{{t .Lang "settings.leave_unchanged_placeholder"}}" autocomplete="new-password"></div>
+                    <div class="settings-verification settings-field-pair">
+                        <div class="settings-field"><label for="basic-current-password">{{t .Lang "settings.current_web_password"}}</label><input id="basic-current-password" type="password" x-model="pw.basicCurrent" class="input-field text-sm" autocomplete="current-password"></div>
+                        <div class="settings-field"><label for="basic-security-code">{{t .Lang "settings.mfa_code_optional"}}</label><input id="basic-security-code" type="text" x-model="pw.basicCode" class="input-field text-sm" autocomplete="one-time-code" maxlength="64" autocapitalize="none" spellcheck="false" aria-describedby="basic-security-code-help"></div>
                     </div>
-                </div>
-                <p class="text-xs text-yellow-400 mt-3" x-show="username !== originalUsername">{{t .Lang "settings.username_change_requires_password"}}</p>
-                <button @click="saveWebAccount" :disabled="accountSaving" class="btn-primary w-full mt-4" x-text="accountSaving ? t('settings.saving') : t('settings.save_web_account')"></button>
+                    <p id="basic-security-code-help" class="text-xs text-gray-500 mb-3">{{t .Lang "settings.mfa_code_help"}}</p>
+                    <div class="settings-account-action"><button type="submit" :disabled="accountSaving || !accountLoaded" class="btn-primary" x-text="accountSaving ? t('settings.saving') : t('settings.save_basic_auth')"></button></div>
+                </form>
+                <form class="settings-credentials" aria-labelledby="web-login-heading" @submit.prevent="saveWebAccount()">
+                    <h4 id="web-login-heading">{{t .Lang "settings.web_login_title"}}</h4>
+                    <p class="settings-credentials-description">{{t .Lang "settings.web_login_desc"}}</p>
+                    <div class="settings-field"><label for="web-login-username">{{t .Lang "auth.username"}}</label><input id="web-login-username" type="text" x-model="username" class="input-field text-sm" autocomplete="username"></div>
+                    <div class="settings-field-pair">
+                        <div class="settings-field"><label for="web-new-password">{{t .Lang "settings.new_password_placeholder"}}</label><input id="web-new-password" type="password" x-model="pw.new1" class="input-field text-sm" placeholder="{{t .Lang "settings.leave_unchanged_placeholder"}}" autocomplete="new-password"></div>
+                        <div class="settings-field"><label for="web-confirm-password">{{t .Lang "settings.confirm_new_password_placeholder"}}</label><input id="web-confirm-password" type="password" x-model="pw.new2" class="input-field text-sm" autocomplete="new-password"></div>
+                    </div>
+                    <p class="text-xs text-yellow-400 mb-3" x-show="username !== originalUsername">{{t .Lang "settings.username_change_requires_password"}}</p>
+                    <div class="settings-verification settings-field-pair">
+                        <div class="settings-field"><label for="web-current-password">{{t .Lang "settings.current_web_password"}}</label><input id="web-current-password" type="password" x-model="pw.old" class="input-field text-sm" autocomplete="current-password"></div>
+                        <div class="settings-field"><label for="web-security-code">{{t .Lang "settings.mfa_code_optional"}}</label><input id="web-security-code" type="text" x-model="pw.code" class="input-field text-sm" autocomplete="one-time-code" maxlength="64" autocapitalize="none" spellcheck="false" aria-describedby="web-security-code-help"></div>
+                    </div>
+                    <p id="web-security-code-help" class="text-xs text-gray-500 mb-3">{{t .Lang "settings.mfa_code_help"}}</p>
+                    <div class="settings-account-action"><button type="submit" :disabled="accountSaving || !accountLoaded" class="btn-primary" x-text="accountSaving ? t('settings.saving') : t('settings.save_web_account')"></button></div>
+                </form>
             </div>
             <p class="text-xs text-yellow-400 mt-2" x-show="accountSaved">{{t .Lang "settings.account_saved_logout"}}</p>
         </div>
 
-        <div class="card" :class="activeSection === 'updates' ? 'md:col-span-2' : ''">
+        <div class="card">
             <h3 class="text-lg font-semibold text-white mb-4" x-text="activeSection === 'updates' ? t('settings.section_updates') : t('settings.server_settings')"></h3>
 
-            <div x-show="activeSection === 'general'">
+            <div x-show="activeSection === 'general'" class="settings-server-fields">
+            <div>
             <div class="mb-4">
-                <label class="label">{{t .Lang "settings.panel_title"}}</label>
+                <label for="panel-title" class="label">{{t .Lang "settings.panel_title"}}</label>
                 <div class="flex space-x-2">
-                    <input type="text" x-model="panelTitle" class="input-field flex-1">
+                    <input id="panel-title" type="text" x-model="panelTitle" class="input-field flex-1">
                     <button @click="saveBasic" class="btn-primary text-sm">{{t .Lang "settings.save"}}</button>
                 </div>
             </div>
+            <div class="mb-4">
+                <label for="server-hostname" class="label">{{t .Lang "settings.hostname"}}</label>
+                <div class="flex space-x-2">
+                    <input id="server-hostname" type="text" x-model="hostname" class="input-field flex-1">
+                    <button @click="saveServerSetting('hostname', hostname)" :disabled="!hostname" class="btn-primary text-sm">{{t .Lang "settings.save"}}</button>
+                </div>
+            </div>
+            </div>
 
             <div class="mb-4">
-                <label class="label">{{t .Lang "settings.timezone"}}</label>
-                <select x-model="timezone" @change="saveServerSetting('timezone', timezone)" class="input-field">
+                <div class="settings-label-help"><label class="label" for="panel-timezone">{{t .Lang "settings.timezone"}}</label><details class="help-tip"><summary aria-label="{{t .Lang "common.help"}}">?</summary><span role="tooltip">{{t .Lang "settings.time_help"}}</span></details></div>
+                <select id="panel-timezone" x-model="timezone" @change="saveServerSetting('timezone', timezone)" class="input-field">
                     <option value="Asia/Shanghai">Asia/Shanghai (UTC+8)</option>
                     <option value="Asia/Tokyo">Asia/Tokyo (UTC+9)</option>
                     <option value="Asia/Singapore">Asia/Singapore (UTC+8)</option>
@@ -85,50 +120,49 @@
                     <option value="Australia/Sydney">Australia/Sydney (UTC+10)</option>
                     <option value="UTC">UTC</option>
                 </select>
-                <div class="flex items-center justify-between mt-1">
-                    <p class="text-xs text-gray-400">{{t .Lang "settings.server_time"}}<span x-text="serverTime" class="text-white font-mono"></span></p>
+                <div class="settings-server-time">
+                    <p class="text-gray-400">{{t .Lang "settings.server_time"}}<time x-text="serverTime"></time></p>
                     <div class="flex items-center space-x-2">
                         <span class="text-xs" :class="ntpSynced ? 'text-green-400' : 'text-yellow-400'" x-text="ntpSynced ? t('settings.ntp_synced') : (ntpEnabled ? t('settings.ntp_waiting') : t('settings.ntp_not_synced'))"></span>
-                        <button @click="syncNTP()" :disabled="ntpSyncing" class="text-xs py-0.5 px-2 rounded" style="background-color: #1e3a5f; color: #93c5fd;" x-text="ntpSyncing ? t('settings.ntp_starting') : t('settings.sync')"></button>
+                        <button @click="syncNTP()" :disabled="ntpSyncing" class="text-xs py-0.5 px-2 rounded" style="background-color: var(--panel-accent-soft); color: var(--panel-accent);" x-text="ntpSyncing ? t('settings.ntp_starting') : t('settings.sync')"></button>
                     </div>
                 </div>
-                <p class="text-xs text-gray-400 mt-2">{{t .Lang "settings.time_help"}}</p>
                 <p x-show="!ntpService" class="mt-1 text-xs text-yellow-300">{{t .Lang "settings.time_service_missing"}}</p>
             </div>
 
-            <div class="mb-4">
-                <label class="label">{{t .Lang "settings.hostname"}}</label>
-                <div class="flex space-x-2">
-                    <input type="text" x-model="hostname" class="input-field flex-1">
-                    <button @click="saveServerSetting('hostname', hostname)" :disabled="!hostname" class="btn-primary text-sm">{{t .Lang "settings.save"}}</button>
-                </div>
-            </div>
             </div>
 
-            <section x-show="activeSection === 'general'" class="card mb-6" x-data="panelCertificateSettings()">
- <h3 class="text-white font-semibold mb-4">{{t .Lang "settings.panel_domain_https"}}</h3>
- <label class="label">{{t .Lang "settings.panel_domain"}}</label>
- <div class="flex flex-wrap gap-2">
-  <input x-model="domain" class="input-field flex-1" placeholder="panel.example.com" :disabled="status.running">
+            <section x-show="activeSection === 'general'" class="settings-certificate" x-data="panelCertificateSettings()">
+ <div class="settings-label-help mb-4"><h3 class="text-white font-semibold">{{t .Lang "settings.panel_domain_https"}}</h3><details class="help-tip"><summary aria-label="{{t .Lang "common.help"}}">?</summary><span role="tooltip">{{t .Lang "settings.panel_domain_help"}}</span></details></div>
+ <div class="settings-server-fields mb-4">
+  <div><p class="text-xs text-gray-400 mb-1">{{t .Lang "settings.panel_login_port"}}</p><p class="text-sm text-white" x-text="panelEndpointLabel()"></p><a href="/{{.RandomSuffix}}/security#ports" class="text-xs text-blue-400 hover:underline">{{t .Lang "settings.panel_access_policy"}}</a></div>
+  <div><p class="text-xs text-gray-400 mb-1">{{t .Lang "settings.panel_certificate_validation_port"}}</p><p class="text-sm text-white">80 / HTTP-01</p><p class="text-xs text-gray-400 mt-1">{{t .Lang "settings.panel_certificate_validation_help"}}</p></div>
+ </div>
+ <label class="label" for="panel-domain">{{t .Lang "settings.panel_domain"}}</label>
+ <input id="panel-domain" x-model="domain" @input="invalidateDomainVerification()" class="input-field" placeholder="panel.example.com" :disabled="starting || status.running" autocomplete="url" autocapitalize="none" spellcheck="false">
+ <div class="settings-domain-actions">
   <button @click="check()" :disabled="checking || status.running || !domain" class="btn-secondary">{{t .Lang "settings.check_domain"}}</button>
   <button @click="apply()" :disabled="starting || status.running || !domain" class="btn-primary">{{t .Lang "settings.apply_panel_certificate"}}</button>
  </div>
- <p class="text-xs text-gray-400 mt-2">{{t .Lang "settings.panel_domain_help"}}</p>
  <p x-show="status.running" class="text-sm text-blue-300 mt-3">{{t .Lang "settings.panel_certificate_running"}}</p>
  <p x-show="message" x-text="message" class="text-sm mt-3" :class="verified ? 'text-green-400' : 'text-red-400'"></p>
- <p x-show="status.error || status.renewal_error" x-text="status.error || status.renewal_error" class="text-sm text-red-400 mt-3"></p>
- <a x-show="status.login_url" :href="status.login_url" x-text="status.login_url" target="_blank" rel="noopener noreferrer" class="block text-blue-400 mt-3 break-all"></a>
- <p x-show="status.expires_at" class="text-xs text-gray-400 mt-2">{{t .Lang "settings.certificate_expiry"}} <span x-text="status.expires_at"></span></p>
+ <p x-show="!message && (status.error || status.renewal_error)" x-text="certificateErrorMessage()" class="text-sm text-red-400 mt-3" role="alert"></p>
+ <details x-show="certificateErrorDetails()" class="mt-3"><summary class="text-xs text-gray-400 cursor-pointer">{{t .Lang "settings.panel_certificate_error_details"}}</summary><pre class="access-code text-xs" x-text="certificateErrorDetails()"></pre></details>
+ <div x-show="status.login_url || status.expires_at" class="settings-certificate-status">
+  <a x-show="status.login_url" :href="status.login_url" x-text="status.login_url" target="_blank" rel="noopener noreferrer" class="block text-blue-400 text-sm"></a>
+  <p x-show="status.expires_at" class="text-xs text-gray-400 mt-2">{{t .Lang "settings.certificate_expiry"}} <time :datetime="status.expires_at" x-text="formatCertificateTime(status.expires_at)"></time></p>
+  <p x-show="status.certificate_source" class="text-xs text-gray-400 mt-1">{{t .Lang "settings.certificate_source"}} <span x-text="certificateSourceLabel()"></span></p>
+ </div>
 </section>
 
 <div x-show="activeSection === 'updates'" x-cloak>
-            <details class="mb-5 rounded border border-gray-700 p-4" style="background-color: #0f172a;">
+            <details class="mb-5 rounded border border-gray-700 p-4" style="background-color: var(--panel-surface-alt);">
                 <summary class="cursor-pointer text-sm text-gray-300">{{t .Lang "settings.advanced_download_settings"}}</summary>
             <div class="mt-4">
-                <label class="label">{{t .Lang "settings.github_proxy"}}</label>
+                <label for="github-proxy" class="label">{{t .Lang "settings.github_proxy"}}</label>
                 <p class="text-xs text-gray-500 mb-2">{{t .Lang "settings.github_proxy_help"}}</p>
                 <div class="flex space-x-2">
-                    <input type="text" x-model="githubProxy" placeholder="https://your-github-proxy.example" class="input-field flex-1">
+                    <input id="github-proxy" type="text" x-model="githubProxy" placeholder="https://your-github-proxy.example" class="input-field flex-1">
                     <button @click="testProxy()" :disabled="proxyTesting" class="btn-secondary text-sm" x-text="proxyTesting ? t('settings.testing') : t('settings.test')"></button>
                     <button @click="saveServerSetting('github_proxy', githubProxy)" class="btn-primary text-sm">{{t .Lang "settings.save"}}</button>
                 </div>
@@ -138,25 +172,25 @@
 
             <hr class="my-4 border-gray-700">
 
-            <div x-data="versionCheck()" x-init="scheduleCheck()">
+            <div x-data="versionCheck()">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm text-gray-400">{{t .Lang "settings.panel_version"}}</span>
                     <span class="version-pill text-sm font-mono px-2 py-0.5" x-text="currentVersion"></span>
                 </div>
-                <div x-show="hasUpdate" class="mb-3 p-3 rounded" style="background-color: #064e3b; border: 1px solid #059669;">
+                <div x-show="hasUpdate" class="mb-3 p-3 rounded" style="background-color: var(--panel-success-soft); border: 1px solid #059669;">
                     <p class="text-sm text-green-300">{{t .Lang "settings.new_version_prefix"}} <span x-text="latestVersion" class="font-bold"></span> {{t .Lang "settings.new_version_suffix"}}</p>
                     <pre x-text="releaseNotes" class="text-xs text-gray-400 mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap"></pre>
                 </div>
                 <div class="flex items-center space-x-3">
                     <button @click="checkUpdate()" :disabled="checking" class="btn-secondary text-xs" x-text="checking ? t('settings.checking') : t('settings.check_updates')"></button>
-                    <button @click="doUpdate()" x-show="hasUpdate" :disabled="updating" class="btn-primary text-xs" x-text="updating ? t('settings.updating') : t('settings.update_now')"></button>
+                    <button @click="doUpdate()" x-show="hasUpdate" :disabled="updating || confirming" class="btn-primary text-xs" x-text="updating ? t('settings.updating') : t('settings.update_now')"></button>
                 </div>
-                <div x-show="updating || updateStatus.running || updateStatus.completed || updateStatus.error" class="mt-3 p-3 rounded" style="background-color: #0f172a; border: 1px solid #1e293b;">
+                <div x-show="updating || updateStatus.running || updateStatus.completed || updateStatus.error" class="mt-3 p-3 rounded" style="background-color: var(--panel-surface-alt); border: 1px solid var(--panel-border);">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs" :class="updateStatus.error ? 'text-red-400' : 'text-gray-300'" x-text="updateStatusText()"></span>
                         <span class="text-xs text-gray-500" x-text="progressLabel()"></span>
                     </div>
-                    <div class="h-2 rounded overflow-hidden" style="background-color: #020617;">
+                    <div class="h-2 rounded overflow-hidden" style="background-color: var(--panel-surface-soft);">
                         <div class="h-full transition-all duration-300" :style="'width: ' + progressPercent() + '%; background-color: ' + (updateStatus.error ? '#dc2626' : '#059669')"></div>
                     </div>
                     <div x-show="updateStatus.stage === 'download_binary' && updateStatus.has_total" class="flex justify-between mt-2 text-xs text-gray-500">
@@ -168,7 +202,7 @@
                 <p x-show="updateError" class="text-xs text-red-400 mt-2" x-text="updateError"></p>
             </div>
 
-            <div class="mt-4 p-3 rounded" style="background-color: #0f172a; border: 1px solid #1e293b;">
+            <div class="mt-4 p-3 rounded" style="background-color: var(--panel-surface-alt); border: 1px solid var(--panel-border);">
                 <div class="flex items-center justify-between mb-3">
                     <div>
                         <p class="text-sm text-gray-300">{{t .Lang "settings.auto_update"}}</p>
@@ -210,7 +244,7 @@
 
             <hr class="my-4 border-gray-700">
 
-            <div id="system-updates" x-data="systemUpdate()" x-init="init()" class="scroll-mt-4">
+            <div id="system-updates" x-data="systemUpdate()" class="scroll-mt-4">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm text-gray-400">{{t .Lang "settings.system_updates"}}</span>
                     <span class="text-sm text-white font-mono" x-show="checked && count > 0" x-text="t('settings.available_count', { count })"></span>
@@ -225,10 +259,10 @@
                         </div>
                         <button type="button" @click="listOpen = !listOpen" class="text-xs text-blue-400 hover:text-blue-300" x-text="listOpen ? t('settings.hide_update_list') : t('settings.show_update_list')"></button>
                     </div>
-                    <div x-show="listOpen" class="p-2 rounded" style="background-color: #0f172a; border: 1px solid #1e293b;">
+                    <div x-show="listOpen" class="p-2 rounded" style="background-color: var(--panel-surface-alt); border: 1px solid var(--panel-border);">
                         <div class="space-y-2 pr-1" style="max-height: 22rem; overflow-y: auto; overscroll-behavior: contain;">
                             <template x-for="pkg in filteredPackages" :key="pkg.name">
-                                <div class="flex flex-wrap items-center justify-between gap-3 p-2 rounded" style="background-color: #111827; border: 1px solid #1e293b;">
+                                <div class="flex flex-wrap items-center justify-between gap-3 p-2 rounded" style="background-color: var(--panel-surface-alt); border: 1px solid var(--panel-border);">
                                     <div class="min-w-0 flex flex-wrap items-center gap-2">
                                         <span class="text-sm text-white font-mono" x-text="pkg.name"></span>
                                         <span class="text-xs" :class="isSecurity(pkg) ? 'text-red-400' : 'text-gray-500'" x-text="pkg.repo"></span>
@@ -244,9 +278,9 @@
                     </div>
                     <p class="text-xs text-gray-500 mt-2">{{t .Lang "settings.system_update_help"}}</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-3 py-2" style="background-color: #1e293b;">
+                <div class="flex flex-wrap items-center gap-3 py-2" style="background-color: var(--panel-surface);">
                     <button @click="check(true)" :disabled="checking || updating" class="btn-secondary text-xs" x-text="checking ? t('settings.checking') : t('settings.refresh')"></button>
-                    <button @click="doUpdate()" x-show="count > 0" :disabled="updating" class="btn-primary text-xs" x-text="updating ? t('settings.updating') : t('settings.one_click_update')"></button>
+                    <button @click="doUpdate()" x-show="count > 0" :disabled="updating || confirming" class="btn-primary text-xs" x-text="updating ? t('settings.updating') : t('settings.one_click_update')"></button>
                 </div>
                 <p x-show="count > 0" class="text-xs text-yellow-500 mt-2">{{t .Lang "settings.system_update_warning"}}</p>
                 <p x-show="lastMessage && !msg" x-cloak class="mt-3 text-xs text-gray-500">
@@ -259,7 +293,7 @@
                         <p class="text-sm" :class="updating ? 'text-blue-400' : (failed ? 'text-red-400' : (remainingCount > 0 ? 'text-yellow-400' : 'text-green-400'))" x-text="msg"></p>
                         <div class="flex shrink-0 items-center gap-2">
                             <span x-show="stage" class="text-xs text-gray-500 font-mono" x-text="stage"></span>
-                            <button x-show="!updating" type="button" @click="dismissStatus()" class="text-xs text-gray-400 hover:text-white" title="{{t .Lang "settings.dismiss_status"}}">×</button>
+                            <button x-show="!updating" type="button" @click="dismissStatus()" class="text-xs text-gray-400 hover:text-white" title="{{t .Lang "settings.dismiss_status"}}" aria-label="{{t .Lang "settings.dismiss_status"}}">×</button>
                         </div>
                     </div>
                     <pre x-show="(failed || remainingCount > 0) && detail" class="mt-2 rounded p-2 text-xs whitespace-pre-wrap break-words overflow-auto" style="max-height: 10rem;" x-text="detail"></pre>
@@ -270,15 +304,15 @@
     </div>
 
     <div id="wordpress-package" x-show="activeSection === 'wordpress'" x-cloak class="mb-6">
-        <div class="card" x-data="wpPackage()" x-init="fetchStatus()">
+        <div class="card" x-data="wpPackage()">
             <h3 class="text-lg font-semibold text-white mb-4">{{t .Lang "settings.wp_package"}}</h3>
             <p class="text-xs text-gray-500 mb-4">{{t .Lang "settings.wp_package_help"}}</p>
 
             <div>
-                <div class="p-3 rounded mb-4" style="background-color: #0f172a;">
+                <div class="p-3 rounded mb-4" style="background-color: var(--panel-surface-alt);">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs text-gray-400">{{t .Lang "settings.local_package_status"}}</span>
-                <span class="text-xs font-medium" :class="pkg.available ? 'text-green-400' : 'text-yellow-400'" x-text="pkg.available ? t('settings.package_ready') : t('settings.package_not_installed')"></span>
+                <span class="text-xs font-medium" :class="pkg.available ? 'text-green-400' : 'text-yellow-400'" x-text="!loaded ? t('common.loading') : (pkg.available ? t('settings.package_ready') : t('settings.package_not_installed'))"></span>
                     </div>
                     <template x-if="pkg.available">
                         <div class="space-y-1">
@@ -296,30 +330,31 @@
                             </div>
                         </div>
                     </template>
-                    <template x-if="!pkg.available">
+                    <template x-if="loaded && !pkg.available">
                         <p class="text-xs text-yellow-400">{{t .Lang "settings.local_package_missing"}}</p>
                     </template>
                 </div>
 
-                <div class="flex items-center space-x-3">
+                <p x-show="loadError" x-cloak role="alert" class="text-sm text-red-400 mb-3" x-text="loadError"></p>
+                <div class="flex flex-wrap items-center gap-3">
                     <button @click="downloadPkg()" :disabled="downloading" class="btn-secondary text-sm" x-text="downloading ? t('settings.downloading') : t('settings.online_download')"></button>
                     <label class="btn-primary text-sm cursor-pointer" :class="uploading ? 'opacity-50 cursor-not-allowed' : ''">
                         <span x-text="uploading ? t('settings.uploading') : t('settings.upload_package')"></span>
                         <input type="file" accept=".zip" class="hidden" @change="uploadPkg($event)" :disabled="uploading">
                     </label>
-                    <button x-show="pkg.available" @click="deletePkg()" :disabled="deleting" class="text-sm py-1.5 px-3 rounded" style="background-color: #7f1d1d; color: #fca5a5;" x-text="deleting ? t('settings.deleting') : t('settings.delete')"></button>
-                    <button @click="fetchStatus()" class="text-xs py-1 px-2 rounded" style="background-color: #1e3a5f; color: #93c5fd;">{{t .Lang "settings.refresh"}}</button>
+                    <button x-show="pkg.available" @click="deletePkg()" :disabled="deleting" class="text-sm py-1.5 px-3 rounded" style="background-color: var(--panel-danger-soft); color: var(--panel-danger);" x-text="deleting ? t('settings.deleting') : t('settings.delete')"></button>
+                    <button @click="fetchStatus()" class="text-xs py-1 px-2 rounded" style="background-color: var(--panel-accent-soft); color: var(--panel-accent);">{{t .Lang "settings.refresh"}}</button>
                 </div>
                 <p x-show="msg" class="text-xs mt-2" :class="msgOk ? 'text-green-400' : 'text-red-400'" x-text="msg"></p>
 
-                <div class="mt-4 p-3 rounded" style="background-color: #0f172a; border: 1px solid #1e293b;">
+                <div class="mt-4 p-3 rounded" style="background-color: var(--panel-surface-alt); border: 1px solid var(--panel-border);">
                     <div class="flex items-center justify-between mb-2">
                         <div>
                             <p class="text-sm text-gray-300">{{t .Lang "settings.wp_package_auto_check"}}</p>
                             <p class="text-xs text-gray-500">{{t .Lang "settings.wp_package_auto_check_help"}}</p>
                         </div>
                         <label class="flex items-center space-x-2 text-sm text-gray-300 cursor-pointer">
-                            <input type="checkbox" x-model="autoCheck.enabled" @change="saveAutoCheck">
+                            <input type="checkbox" x-model="autoCheck.enabled" @change="saveAutoCheck" :disabled="!loaded">
                             <span x-text="autoCheck.enabled ? t('settings.enabled') : t('settings.disabled')"></span>
                         </label>
                     </div>
@@ -337,7 +372,7 @@
 
 	</div>
 
-    <div id="panel-backups" x-show="activeSection === 'backups'" x-cloak class="card mb-6" x-data="dbBackup()" x-init="init()">
+    <div id="panel-backups" x-show="activeSection === 'backups'" x-cloak class="card mb-6" x-data="dbBackup()">
         <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-white">{{t .Lang "settings.panel_db_backup"}}</h3>
             <div class="flex items-center space-x-2">
@@ -345,7 +380,11 @@
             </div>
         </div>
         <p class="text-gray-400 text-xs mb-2">{{t .Lang "settings.panel_db_backup_help"}}</p>
+        <p class="text-gray-500 text-xs mb-3">{{t .Lang "settings.mfa_backup_help"}}</p>
         <p class="text-yellow-500/80 text-xs mb-4">{{t .Lang "settings.panel_db_backup_warning"}}</p>
+        <p x-show="restoreStatusError" x-cloak role="alert" class="text-sm text-red-400 mb-3"><span x-text="restoreStatusError"></span> <button type="button" @click="resumeRestore()" :disabled="restorePolling" class="underline">{{t .Lang "common.retry"}}</button></p>
+        <p x-show="loading" x-cloak role="status" class="text-sm text-gray-400 mb-3">{{t .Lang "common.loading"}}</p>
+        <p x-show="loadError" x-cloak role="alert" class="text-sm text-red-400 mb-3"><span x-text="loadError"></span> <button type="button" @click="fetchBackups()" class="underline">{{t .Lang "common.retry"}}</button></p>
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="border-b border-gray-700">
@@ -369,7 +408,7 @@
                             </td>
                         </tr>
                     </template>
-                    <tr x-show="backups.length === 0">
+                    <tr x-show="loaded && !loading && !loadError && backups.length === 0">
                         <td colspan="4" class="table-cell text-center text-gray-500 py-6">{{t .Lang "settings.no_backup_records"}}</td>
                     </tr>
                 </tbody>
@@ -377,13 +416,13 @@
         </div>
     </div>
 
-    <div id="operation-logs" x-show="activeSection === 'logs'" x-cloak class="card" x-data="operationLogs()" x-init="fetchLogs()">
+    <div id="operation-logs" x-show="activeSection === 'logs'" x-cloak class="card" x-data="operationLogs()">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h3 class="text-lg font-semibold text-white">{{t .Lang "settings.recent_operation_logs"}}</h3>
             <button type="button" @click="fetchLogs" class="btn-secondary text-sm">{{t .Lang "settings.refresh_logs"}}</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <input type="search" x-model.debounce.400ms="query" @input="applyFilters" class="input-field text-sm" placeholder="{{t .Lang "settings.log_search_placeholder"}}" maxlength="64">
+            <input type="search" x-model="query" @input.debounce.400ms="applyFilters()" class="input-field text-sm" placeholder="{{t .Lang "settings.log_search_placeholder"}}" aria-label="{{t .Lang "settings.log_search_placeholder"}}" maxlength="64">
             <select x-model="statusFilter" @change="applyFilters" class="input-field text-sm" aria-label="{{t .Lang "settings.filter_status"}}">
                 <option value="">{{t .Lang "settings.all_statuses"}}</option>
                 <option value="success">{{t .Lang "settings.success"}}</option>
@@ -400,6 +439,8 @@
                 </select>
             </label>
         </div>
+        <p x-show="loading" x-cloak role="status" class="text-sm text-gray-400 mb-3">{{t .Lang "common.loading"}}</p>
+        <p x-show="loadError" x-cloak role="alert" class="text-sm text-red-400 mb-3" x-text="loadError"></p>
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="border-b border-gray-700">
@@ -424,7 +465,7 @@
                             </td>
                         </tr>
                     </template>
-                    <tr x-show="logs.length === 0">
+                    <tr x-show="loaded && !loading && !loadError && logs.length === 0">
                         <td colspan="4" class="table-cell text-center text-gray-500 py-8">{{t .Lang "settings.no_operation_logs"}}</td>
                     </tr>
                 </tbody>
@@ -444,8 +485,66 @@
 </div>
 
 <script>
+function settingsSectionActive(component, section) {
+    return (typeof component.activeSection === 'undefined' || component.activeSection === section) &&
+        (typeof document === 'undefined' || !document.hidden);
+}
+
+// Retain each component's drafts and task state while loading its ordinary reads on demand.
+function watchSettingsSection(component, section, load, pause = () => {}, ttl = 30000) {
+    let stopped = false, loadedAt = 0, pending = false, reactivate = false;
+    const activate = async () => {
+        if (stopped) return;
+        if (!settingsSectionActive(component, section)) { pause(); return; }
+        if (pending) { reactivate = true; return; }
+        if (loadedAt && Date.now() - loadedAt < ttl) return;
+        pending = true;
+        try { if (await load() !== false && !stopped) loadedAt = Date.now(); }
+        finally { pending = false; if (reactivate) { reactivate = false; activate(); } }
+    };
+    const unwatch = typeof component.$watch === 'function' ? component.$watch('activeSection', activate) : null;
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') document.addEventListener('visibilitychange', activate);
+    return {
+        ready: activate(),
+        invalidate() { loadedAt = 0; },
+        destroy() {
+            stopped = true;
+            if (typeof unwatch === 'function') unwatch();
+            if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') document.removeEventListener('visibilitychange', activate);
+            pause();
+        }
+    };
+}
+
+function cancelSettingsRead(component) {
+    component.readGeneration = (component.readGeneration || 0) + 1;
+    component.readController?.abort();
+    component.readController = null;
+    component.loading = false;
+}
+
+async function settingsRead(component, path, timeout = 15000) {
+    cancelSettingsRead(component);
+    const generation = component.readGeneration;
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    component.readController = controller;
+    component.loading = true;
+    try {
+        const result = await api(path, { silent: true, timeout, ...(controller ? { signal: controller.signal } : {}) });
+        if (component.readGeneration !== generation) return null;
+        if (!result.success) throw new Error(result.message || t('common.request_failed'));
+        return result;
+    } catch (error) {
+        if (component.readGeneration !== generation || error.name === 'AbortError' || error.code === 'request_cancelled') return null;
+        throw error;
+    } finally {
+        if (component.readGeneration === generation) { component.readController = null; component.loading = false; }
+    }
+}
+
 function wpPackage() {
     return {
+        readGeneration: 0, readController: null,
         pkg: { available: false, size_text: '', updated_at: '', version: '' },
         autoCheck: { enabled: true, lastCheckAt: '', lastStatus: '', lastError: '', remoteVersion: '' },
         downloading: false,
@@ -453,9 +552,14 @@ function wpPackage() {
         deleting: false,
         msg: '',
         msgOk: false,
+        loaded: false, loading: false, loadError: '', sectionLoader: null,
+        init() { this.sectionLoader = watchSettingsSection(this, 'wordpress', () => this.fetchStatus(), () => cancelSettingsRead(this)); },
+        destroy() { this.sectionLoader?.destroy(); },
         async fetchStatus() {
+            this.loadError = '';
             try {
-                const r = await api('/settings/wp-package');
+                const r = await settingsRead(this, '/settings/wp-package');
+                if (!r) return false;
                 if (r.success) {
                     this.pkg = r.data;
                     const ac = r.data.auto_check || {};
@@ -464,8 +568,11 @@ function wpPackage() {
                     this.autoCheck.lastStatus = ac.wp_package_last_check_status || '';
                     this.autoCheck.lastError = ac.wp_package_last_check_error || '';
                     this.autoCheck.remoteVersion = ac.wp_package_last_remote_version || '';
+                    this.loaded = true;
+                    return true;
                 }
-            } catch(e) {}
+            } catch(e) { this.loadError = e.message || t('common.request_failed'); }
+            return false;
         },
         autoCheckStatusText() {
             const map = {
@@ -559,6 +666,8 @@ function panelSettings() {
         proxyResult: '',
         proxyOk: false,
         accountSaving: false,
+        accountLoaded: false,
+        accountLoadError: '',
         accountSaved: false,
         autoUpdate: {
             enabled: false,
@@ -573,15 +682,20 @@ function panelSettings() {
             lastSuccess: '',
             lastSuccessVersion: ''
         },
-        pw: { old: '', new1: '', new2: '', basic: '' },
+        pw: { old: '', new1: '', new2: '', basic: '', basicCurrent: '', basicCode: '', code: '' },
         timeTimer: null,
-        destroy() { if (this.timeTimer) clearInterval(this.timeTimer); },
+        hashListener: null,
+        destroy() {
+            if (this.timeTimer) clearInterval(this.timeTimer);
+            if (this.hashListener) window.removeEventListener('hashchange', this.hashListener);
+        },
         initPage() {
             this.activeSection = this.sectionFromHash();
             this.fetchSettings();
-            window.addEventListener('hashchange', () => {
+            this.hashListener = () => {
                 this.activeSection = this.sectionFromHash();
-            });
+            };
+            window.addEventListener('hashchange', this.hashListener);
         },
         sectionFromHash() {
             const aliases = {
@@ -605,9 +719,13 @@ function panelSettings() {
                 : 'px-4 py-2 rounded text-sm text-gray-300 hover:bg-gray-700';
         },
         async fetchSettings() {
+            this.accountLoaded = false;
+            this.accountLoadError = '';
             try {
-                const r = await api('/settings');
+                const r = await api('/settings', { timeout: 15000 });
+                if (!r.success) throw new Error(r.message || t('settings.account_load_failed'));
                 if (r.success) {
+                    if (typeof r.data?.username !== 'string' || !r.data.username || typeof r.data.basic_auth_user !== 'string') throw new Error(t('settings.account_load_failed'));
                     this.panelTitle = r.data.panel_title || 'YUB WPanel';
                     this.username = r.data.username || '';
                     this.originalUsername = this.username;
@@ -634,11 +752,12 @@ function panelSettings() {
                     this.autoUpdate.lastError = au.panel_auto_update_last_error || '';
                     this.autoUpdate.lastSuccess = au.panel_auto_update_last_success_at || '';
                     this.autoUpdate.lastSuccessVersion = au.panel_auto_update_last_success_version || '';
+                    this.accountLoaded = true;
                 }
-            } catch(e) {}
+            } catch(e) { this.accountLoadError = e.message || t('settings.account_load_failed'); }
             this.tickTime();
             if (this.timeTimer) clearInterval(this.timeTimer);
-this.timeTimer = setInterval(() => this.tickTime(), 1000);
+            this.timeTimer = setInterval(() => { if (settingsSectionActive(this, 'general')) this.tickTime(); }, 1000);
         },
         tickTime() {
             if (this.serverTimeBase) {
@@ -647,27 +766,33 @@ this.timeTimer = setInterval(() => this.tickTime(), 1000);
                 const opts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
                 if (this.timezone) opts.timeZone = this.timezone;
                 try {
-                    this.serverTime = d.toLocaleString('zh-CN', opts);
+                    this.serverTime = d.toLocaleString(typeof currentLocale === 'function' ? currentLocale() : 'zh-CN', opts);
                 } catch (e) {
                     delete opts.timeZone;
-                    this.serverTime = d.toLocaleString('zh-CN', opts);
+                    this.serverTime = d.toLocaleString(typeof currentLocale === 'function' ? currentLocale() : 'zh-CN', opts);
                 }
             }
         },
         async saveBasicAuth() {
+            if (!this.accountLoaded || this.accountSaving) return;
             if (!this.basicAuthUser.trim()) { showToast(t('settings.basic_auth_username_required'), 'error'); return; }
+            if (!this.pw.basicCurrent) { showToast(t('settings.current_password_required_for_account'), 'error'); return; }
             if (this.pw.basic && this.pw.basic.length < 8) { showToast(t('settings.basic_auth_password_min_length'), 'error'); return; }
-            const body = { basic_auth_user: this.basicAuthUser.trim() };
+            const body = { basic_auth_user: this.basicAuthUser.trim(), old_password: this.pw.basicCurrent, code: this.pw.basicCode.trim() };
             if (this.pw.basic) body.basic_auth_password = this.pw.basic;
             this.accountSaving = true;
             try {
-                await api('/settings', { method: 'PUT', body });
+                const r = await api('/settings', { method: 'PUT', body, allowAuthFailure: true });
+                if (!r.success) throw new Error(r.message || t('settings.save_failed'));
                 this.pw.basic = '';
+                this.pw.basicCurrent = '';
+                this.pw.basicCode = '';
                 showToast(t('settings.basic_auth_saved'), 'success');
             } catch(e) { showToast(e.message, 'error'); }
             this.accountSaving = false;
         },
         async saveWebAccount() {
+            if (!this.accountLoaded || this.accountSaving) return;
             const username = this.username.trim();
             const usernameChanged = username !== this.originalUsername;
             const passwordChanged = Boolean(this.pw.new1 || this.pw.new2);
@@ -678,11 +803,13 @@ this.timeTimer = setInterval(() => this.tickTime(), 1000);
                 if (this.pw.new1 !== this.pw.new2) { showToast(t('settings.passwords_not_match'), 'error'); return; }
                 if (this.pw.new1.length < 8) { showToast(t('settings.new_password_min_length'), 'error'); return; }
             }
-            const body = { username, old_password: this.pw.old };
+            const body = { username, old_password: this.pw.old, code: this.pw.code.trim() };
             if (passwordChanged) body.new_password = this.pw.new1;
             this.accountSaving = true;
             try {
-                await api('/settings', { method: 'PUT', body });
+                const r = await api('/settings', { method: 'PUT', body, allowAuthFailure: true });
+                if (!r.success) throw new Error(r.message || t('settings.save_failed'));
+                this.pw.old = ''; this.pw.new1 = ''; this.pw.new2 = ''; this.pw.code = '';
                 this.accountSaved = true;
                 showToast(t('settings.account_saved_please_relogin'), 'success');
                 setTimeout(async () => {
@@ -757,24 +884,36 @@ this.timeTimer = setInterval(() => this.tickTime(), 1000);
 }
 function versionCheck() {
     return {
+        readGeneration: 0, readController: null, loading: false,
         currentVersion: "{{.PanelVersion}}",
         latestVersion: "",
         releaseNotes: "",
         hasUpdate: false,
         checking: false,
         updating: false,
+        confirming: false, reloadTimer: null,
         updateError: "",
         updateStatus: { running: false, completed: false, stage: "idle", message: "", percent: 0, download_percent: 0, downloaded_bytes: 0, total_bytes: 0, has_total: false, error: "" },
         pollTimer: null,
         updateStarting: false,
         pollStartedAt: 0,
         maxPollMs: 12 * 60 * 1000,
-        scheduleCheck() {
-            deferTask(() => this.fetchVersion(), 1000);
+        sectionLoader: null, statusLoading: false, disposed: false,
+        init() {
+            this.sectionLoader = watchSettingsSection(this, 'updates', async () => {
+                await this.fetchUpdateStatus();
+                if (this.updateStatus.running && !this.pollTimer) { this.updating = true; this.startStatusPolling(false); }
+                return this.fetchVersion();
+            }, () => cancelSettingsRead(this), 60000);
         },
-        async fetchVersion() {
+        destroy() { this.disposed = true; this.sectionLoader?.destroy(); if (this.pollTimer) clearInterval(this.pollTimer); clearTimeout(this.reloadTimer); },
+        scheduleCheck() {
+            return this.fetchVersion();
+        },
+        async fetchVersion(fresh = false) {
             try {
-                const r = await api("/update/check", { timeout: 15000 });
+                const r = await settingsRead(this, "/update/check" + (fresh ? '?fresh=1' : ''), 22000);
+                if (!r) return false;
                 if (r.success) {
                     this.currentVersion = r.data.current_version;
                     this.latestVersion = r.data.latest_version || "";
@@ -788,9 +927,10 @@ return !this.updateError;
 return false;
         },
         async checkUpdate() {
+            if (this.checking || this.updating) return;
             this.checking = true;
             this.updateError = "";
-            const checked = await this.fetchVersion();
+            const checked = await this.fetchVersion(true);
             if (checked && !this.hasUpdate && !this.updateError) showToast(t('settings.up_to_date_message'), "success");
             this.checking = false;
         },
@@ -817,13 +957,11 @@ return false;
             return this.updateStatus.message || t('settings.preparing_update');
         },
         async fetchUpdateStatus() {
-            const prefix = document.body.dataset.panelPrefix || "";
+            if (this.statusLoading || this.disposed) return;
+            this.statusLoading = true;
             try {
-                const resp = await fetch(prefix + "/api/update/status", {
-                    headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" },
-                });
-                if (!resp.ok) throw new Error("status " + resp.status);
-                const r = await resp.json();
+                const r = await api('/update/status', { silent: true, timeout: 10000 });
+                if (this.disposed) return;
                 if (r.success) {
                     const nextStatus = Object.assign({}, this.updateStatus, r.data || {});
                     if (this.updateStarting && !nextStatus.running) {
@@ -837,14 +975,13 @@ return false;
                     }
                 }
             } catch(e) {
-                if (this.updating) {
+                if (!this.disposed && this.updating) {
                     this.updateStatus = Object.assign({}, this.updateStatus, {
                         running: true,
-                        message: t('settings.panel_restarting'),
-                        percent: Math.max(this.progressPercent(), 98),
+                        message: t('settings.update_status_waiting'),
                     });
                 }
-            }
+            } finally { this.statusLoading = false; }
             if (this.updating && this.pollStartedAt && Date.now() - this.pollStartedAt > this.maxPollMs) {
                 if (this.pollTimer) {
                     clearInterval(this.pollTimer);
@@ -858,33 +995,41 @@ return false;
                 });
             }
         },
-        startStatusPolling() {
+        startStatusPolling(expectStart = true) {
             if (this.pollTimer) clearInterval(this.pollTimer);
-            this.updateStarting = true;
+            this.updateStarting = expectStart;
             this.pollStartedAt = Date.now();
             this.fetchUpdateStatus();
             this.pollTimer = setInterval(() => this.fetchUpdateStatus(), 1000);
         },
         async doUpdate() {
-            if (!await confirmModal(t('settings.confirm_update_version', { version: this.latestVersion }))) return;
+            if (this.updating || this.checking || this.confirming || this.disposed) return;
+            this.confirming = true;
+            let confirmed;
+            try { confirmed = await confirmModal(t('settings.confirm_update_version', { version: this.latestVersion })); }
+            finally { this.confirming = false; }
+            if (!confirmed || this.disposed || this.updating) return;
             this.updating = true;
             this.updateError = "";
             this.updateStatus = { running: true, completed: false, stage: "fetch_release", message: t('settings.preparing_update'), percent: 5, download_percent: 0, downloaded_bytes: 0, total_bytes: 0, has_total: false, error: "" };
             this.startStatusPolling();
             try {
                 const r = await api("/update/do", { method: "POST" });
+                if (this.disposed) return;
                 this.updateStarting = false;
                 await this.fetchUpdateStatus();
-                if (!this.updateStatus.completed) {
-                    this.updateStatus = Object.assign({}, this.updateStatus, { running: false, completed: true, message: this.updateStatus.message || t('settings.update_completed_restart'), percent: 100, error: "" });
-                }
                 showToast(r.data?.message || t('settings.update_started'), "success");
                 this.updateError = t('settings.update_completed_refresh');
-                setTimeout(() => { location.reload(); }, 3000);
+                this.reloadTimer = setTimeout(() => { if (!this.disposed) location.reload(); }, 3000);
             } catch(e) {
+                if (this.disposed) return;
                 this.updateStarting = false;
                 await this.fetchUpdateStatus();
                 this.updateError = e.message;
+                if (this.updateStatus.running || this.updateStatus.completed) {
+                    showToast(e.message, "error");
+                    return;
+                }
                 this.updateStatus = Object.assign({}, this.updateStatus, { running: false, error: this.updateStatus.error || e.message });
                 showToast(e.message, "error");
                 this.updating = false;
@@ -896,18 +1041,29 @@ return false;
 
 function dbBackup() {
     return {
+        readGeneration: 0, readController: null,
         backups: [],
         backingUp: false,
         restoring: false,
+        loaded: false, loading: false, loadError: '', sectionLoader: null, disposed: false,
+        restoreStatusError: '', restorePolling: false, restoreConfirming: false,
         async init() {
-            await this.fetchBackups();
-            const restoreID = localStorage.getItem('yubWPanelDBRestoreID');
+            this.sectionLoader = watchSettingsSection(this, 'backups', () => this.fetchBackups(), () => cancelSettingsRead(this));
+            const restoreID = localStorage.getItem('yubWPanelDBRestoreID') || localStorage.getItem('yubWPanelDBRestoreID');
             if (restoreID) await this.waitForRestore(restoreID);
         },
+        destroy() { this.disposed = true; this.sectionLoader?.destroy(); },
         async fetchBackups() {
-            try { const r = await api('/settings/db-backup'); if (r.success) this.backups = r.data || []; } catch(e) {}
+            this.loadError = '';
+            try {
+                const r = await settingsRead(this, '/settings/db-backup');
+                if (!r) return false;
+                this.backups = r.data || []; this.loaded = true;
+                return true;
+            } catch(e) { this.loadError = e.message || t('common.request_failed'); return false; }
         },
         async doBackup() {
+            if (this.backingUp || this.restoring) return;
             this.backingUp = true;
             try {
                 const r = await api('/settings/db-backup', { method: 'POST' });
@@ -921,7 +1077,12 @@ function dbBackup() {
             window.open(prefix + '/api/settings/db-backup/' + encodeURIComponent(filename) + '/download');
         },
         async doRestore(filename) {
-            if (!await confirmModal(t('settings.confirm_restore_db_backup'))) return;
+            if (this.restoring || this.backingUp || this.restoreConfirming) return;
+            this.restoreConfirming = true;
+            let confirmed;
+            try { confirmed = await confirmModal(t('settings.confirm_restore_db_backup')); }
+            finally { this.restoreConfirming = false; }
+            if (!confirmed) return;
             this.restoring = true;
             try {
                 const r = await api('/settings/db-backup/restore', { method: 'POST', body: { filename } });
@@ -935,13 +1096,21 @@ function dbBackup() {
             }
         },
         async waitForRestore(restoreID) {
+            if (this.restorePolling || this.disposed) return;
             this.restoring = true;
+            this.restorePolling = true;
+            this.restoreStatusError = '';
+            try {
             for (let i = 0; i < 90; i++) {
+                if (this.disposed) return;
                 try {
-                    const r = await api('/settings/db-backup/restore-status', { silent: true });
+                    const r = await api('/settings/db-backup/restore-status', { silent: true, timeout: 10000 });
+                    if (this.disposed) return;
                     const status = r.data || {};
                     if (status.id === restoreID && status.status !== 'running' && status.status !== 'idle') {
                         localStorage.removeItem('yubWPanelDBRestoreID');
+                        localStorage.removeItem('yubWPanelDBRestoreID');
+                        this.restoring = false;
                         showToast(status.message || t('settings.restoring'), status.status === 'success' ? 'success' : 'error');
                         setTimeout(() => location.reload(), 1500);
                         return;
@@ -949,8 +1118,12 @@ function dbBackup() {
                 } catch(e) {}
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
-            this.restoring = false;
-            showToast(t('settings.panel_db_restore_status_unknown'), 'error');
+            this.restoreStatusError = t('settings.panel_db_restore_status_unknown');
+            } finally { this.restorePolling = false; }
+        },
+        resumeRestore() {
+            const restoreID = localStorage.getItem('yubWPanelDBRestoreID') || localStorage.getItem('yubWPanelDBRestoreID');
+            if (restoreID) return this.waitForRestore(restoreID);
         },
         async doDelete(filename) {
             if (!await confirmModal(t('settings.confirm_delete_backup'))) return;
@@ -965,6 +1138,7 @@ function dbBackup() {
 
 function operationLogs() {
     return {
+        readGeneration: 0, readController: null,
         logs: [],
         logPage: 1,
         logTotalPages: 1,
@@ -972,19 +1146,27 @@ function operationLogs() {
         query: '',
         statusFilter: '',
         perPage: 10,
+        loaded: false, loading: false, loadError: '', sectionLoader: null,
+        init() { this.sectionLoader = watchSettingsSection(this, 'logs', () => this.fetchLogs(), () => cancelSettingsRead(this)); },
+        destroy() { this.sectionLoader?.destroy(); },
         async fetchLogs() {
+            this.loadError = '';
             try {
                 const params = new URLSearchParams({ page: String(this.logPage), per_page: String(this.perPage) });
                 if (this.statusFilter) params.set('status', this.statusFilter);
                 if (this.query.trim()) params.set('q', this.query.trim());
-                const r = await api('/settings/logs?' + params.toString());
+                const r = await settingsRead(this, '/settings/logs?' + params.toString());
+                if (!r) return false;
                 if (r.success) {
                     this.logs = r.data?.data || r.data || [];
                     this.logTotal = r.data?.total || this.logs.length;
                     this.logPage = r.data?.page || 1;
                     this.logTotalPages = r.data?.total_pages || 1;
+                    this.loaded = true;
+                    return true;
                 }
-            } catch(e) { console.error('fetchLogs error:', e); }
+            } catch(e) { this.loadError = e.message || t('common.request_failed'); }
+            return false;
         },
         applyFilters() {
             this.logPage = 1;
@@ -1028,6 +1210,7 @@ function operationLogs() {
                 firewall_protection_confirm: 'settings.operation_firewall_protection_confirm',
                 create_site: 'settings.operation_create_site',
                 wp_package_auto_check: 'settings.operation_wp_package_auto_check',
+                litespeed_cache_recommended: 'settings.operation_litespeed_cache_recommended',
                 redis_object_cache_clear: 'settings.operation_redis_object_cache_clear',
                 wp_optimizations: 'settings.operation_wp_optimizations',
                 wp_update_checks: 'settings.operation_wp_update_checks',
@@ -1050,6 +1233,7 @@ function operationLogs() {
 }
 function systemUpdate() {
     return {
+        readGeneration: 0, readController: null, loading: false,
         packages: [],
         filter: 'all',
         listOpen: false,
@@ -1057,6 +1241,7 @@ function systemUpdate() {
         checked: false,
         checking: false,
         updating: false,
+        confirming: false,
         msg: '',
         ok: false,
         failed: false,
@@ -1069,6 +1254,8 @@ function systemUpdate() {
         successTimer: null,
         lastMessage: '',
         lastUpdatedAt: '',
+        lastTerminalKey: '',
+        sectionLoader: null, disposed: false,
         isSecurity(pkg) {
             return String(pkg && pkg.repo || '').toLowerCase().includes('security');
         },
@@ -1084,16 +1271,21 @@ function systemUpdate() {
             return this.packages;
         },
         init() {
-            this.resume(true);
-            this.scheduleCheck();
+            this.sectionLoader = watchSettingsSection(this, 'updates', async () => {
+                await this.resume(true);
+                return this.check();
+            }, () => cancelSettingsRead(this), 60000);
         },
+        destroy() { this.disposed = true; this.sectionLoader?.destroy(); clearTimeout(this.pollTimer); clearTimeout(this.successTimer); },
         scheduleCheck() {
-            deferTask(() => this.check(), 1600);
+            return this.check();
         },
         async check(fresh = false) {
+            if (this.checking) return false;
             this.checking = true;
             try {
-                const r = await api('/system/updates' + (fresh ? '?fresh=1' : ''));
+                const r = await settingsRead(this, '/system/updates' + (fresh ? '?fresh=1' : ''), 130000);
+                if (!r) return false;
                 if (r.success) {
                     this.packages = r.data.packages || [];
                     this.count = r.data.count || 0;
@@ -1101,21 +1293,24 @@ function systemUpdate() {
                     this.packageCatalogURL = r.data.package_catalog_url || '';
                     this.checked = true;
                 }
-            } catch(e) { showToast(e.message, 'error'); }
-            this.checking = false;
+                return true;
+            } catch(e) { showToast(e.message, 'error'); return false; }
+            finally { this.checking = false; }
         },
         packageDetailsURL(name) {
             return this.packageCatalogURL + encodeURIComponent(name);
         },
         async resume(initial = false) {
+            if (this.disposed) return;
             this.pollTimer = null;
             try {
-                const r = await api('/system/updates/status');
+                const r = await api('/system/updates/status', { silent: true, timeout: 10000 });
+                if (this.disposed) return;
                 if (!r.success || !r.data) return;
-                this.applyStatus(r.data, initial);
+                await this.applyStatus(r.data, initial);
             } catch(e) {
                 console.error('system update status error:', e);
-                if (this.updating && !this.pollTimer) {
+                if (!this.disposed && this.updating && !this.pollTimer) {
                     this.pollTimer = setTimeout(() => this.resume(false), 3000);
                 }
             }
@@ -1157,9 +1352,12 @@ function systemUpdate() {
                     this.resume(false);
                 }, 1500);
             } else if (status.status === 'success') {
-                this.check(true);
+                const terminalKey = JSON.stringify([status.id || '', status.updated_at || '', status.message || '', this.remainingCount]);
+                const needsRefresh = !initial && (wasUpdating || this.lastTerminalKey !== terminalKey);
+                this.lastTerminalKey = terminalKey;
                 if (this.msg && this.remainingCount === 0) this.scheduleSuccessDismiss();
                 else if (this.remainingCount > 0) { clearTimeout(this.successTimer); this.successTimer = null; }
+                if (needsRefresh) return this.check(true);
             }
         },
         scheduleSuccessDismiss() {
@@ -1182,7 +1380,12 @@ function systemUpdate() {
             return parsed.toLocaleString();
         },
         async doUpdate() {
-            if (!await confirmModal(t('settings.confirm_system_update'))) return;
+            if (this.updating || this.confirming || this.disposed) return;
+            this.confirming = true;
+            let confirmed;
+            try { confirmed = await confirmModal(t('settings.confirm_system_update')); }
+            finally { this.confirming = false; }
+            if (!confirmed || this.disposed || this.updating) return;
             clearTimeout(this.successTimer);
             this.successTimer = null;
             this.updating = true;
@@ -1194,8 +1397,10 @@ function systemUpdate() {
             this.msg = t('settings.system_update_status_queued');
             try {
                 const r = await api('/system/updates/do', { method: 'POST' });
+                if (this.disposed) return;
                 if (r.success) this.applyStatus(r.data, false);
             } catch(e) {
+                if (this.disposed) return;
                 await this.resume(false);
                 if (!this.failed) {
                     this.ok = false;
@@ -1213,14 +1418,82 @@ function systemUpdate() {
 
 <script>
 function panelCertificateSettings() {
- return {
-  domain:'', status:{running:false}, timer:null, refreshing:false, checking:false, starting:false, message:'', verified:false,
-  async init(){await this.refresh();this.domain=this.status.domain || '';this.timer=setInterval(()=>{if(!document.hidden)this.refresh();},30000);},
-  destroy(){if(this.timer)clearInterval(this.timer);},
-  async refresh(){if(this.refreshing)return;this.refreshing=true;try{const r=await api('/settings/panel-certificate');this.status=r.data || {};}catch(e){this.message=e.message;this.verified=false;}finally{this.refreshing=false;}},
-  async check(){this.checking=true;this.message='';try{await api('/settings/panel-domain/check',{method:'POST',body:{domain:this.domain},timeout:45000});this.message=t('settings.panel_domain_verified');this.verified=true;}catch(e){this.message=e.message;this.verified=false;}finally{this.checking=false;}},
-  async apply(){if(!await confirmModal(t('settings.panel_certificate_confirm')))return;this.starting=true;this.message='';try{await api('/settings/panel-certificate',{method:'POST',body:{domain:this.domain}});await this.refresh();}catch(e){this.message=e.message;this.verified=false;}finally{this.starting=false;}}
- };
+    return {
+        readGeneration: 0, readController: null, loading: false,
+        domain: '', status: { running: false }, timer: null, refreshing: false,
+        checking: false, starting: false, message: '', verified: false, errorDetails: null, domainRevision: 0,
+        sectionLoader: null,
+        async init() {
+            this.sectionLoader = watchSettingsSection(this, 'general', async () => {
+                const initialDomain = this.domain, initialRevision = this.domainRevision;
+                const refreshed = await this.refresh();
+                if (refreshed && !this.domain && this.domain === initialDomain && this.domainRevision === initialRevision) this.domain = this.status.domain || '';
+                return refreshed;
+            }, () => { if (!this.status.running) cancelSettingsRead(this); });
+            this.timer = setInterval(() => { if (this.status.running || settingsSectionActive(this, 'general')) this.refresh(); }, 30000);
+            await this.sectionLoader.ready;
+        },
+        destroy() { this.sectionLoader?.destroy(); cancelSettingsRead(this); if (this.timer) clearInterval(this.timer); },
+        invalidateDomainVerification() { this.domainRevision++; this.verified = false; this.message = ''; this.errorDetails = null; },
+        panelEndpointLabel() {
+            const port = Number(this.status.port);
+            return Number.isInteger(port) && port > 0 && port <= 65535 ? port + ' / ' + (this.status.uses_tls ? 'HTTPS' : 'HTTP') : '--';
+        },
+        formatCertificateTime(value) {
+            if (!value) return '--';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '--';
+            const locale = typeof currentLocale === 'function' ? currentLocale() : 'zh-CN';
+            return date.toLocaleString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+        },
+        certificateSourceLabel() {
+            return { self_signed: t('settings.certificate_source_self_signed'), lets_encrypt: t('settings.certificate_source_lets_encrypt'), custom: t('settings.certificate_source_custom') }[this.status.certificate_source] || this.status.certificate_source || '--';
+        },
+        certificateErrorText(code, fallback = '') {
+            const knownCodes = ['panel_domain_invalid', 'panel_domain_dns_failed', 'panel_domain_dns_empty', 'panel_domain_dns_not_public', 'panel_domain_route_unavailable', 'panel_domain_http_unreachable', 'panel_domain_http_redirect', 'panel_domain_http_status', 'panel_domain_challenge_mismatch', 'panel_certificate_failed', 'panel_certificate_running'];
+            const translationKey = 'settings.' + code;
+            return knownCodes.includes(code) ? t(translationKey) : fallback || t('settings.panel_certificate_failed');
+        },
+        certificateErrorMessage() {
+            return this.status.error ? this.certificateErrorText(this.status.error_code, this.status.error) : this.certificateErrorText(this.status.renewal_error_code, this.status.renewal_error);
+        },
+        certificateErrorDetails() {
+            const details = this.errorDetails || this.status.error_details || this.status.renewal_error_details;
+            if (!details) return '';
+            const labels = { domain: 'settings.panel_domain', address: 'settings.check_address', address_family: 'settings.check_address_family', http_status: 'settings.check_http_status', redirect_location: 'settings.check_redirect_location' };
+            return Object.entries(labels).filter(([key]) => details[key] !== undefined && details[key] !== null && details[key] !== '' && ['string', 'number'].includes(typeof details[key])).map(([key, label]) => t(label) + ': ' + String(details[key]).replace(/^ipv([46])$/i, 'IPv$1')).join('\n');
+        },
+        async refresh() {
+            if (this.refreshing) return false;
+            this.refreshing = true;
+            try { const r = await settingsRead(this, '/settings/panel-certificate'); if (!r) return false; this.status = r.data || {}; return true; }
+            catch (e) { this.message = this.certificateErrorText(e.code, e.message); this.verified = false; return false; }
+            finally { this.refreshing = false; }
+        },
+        async check() {
+            if (this.checking || this.status.running) return;
+            const domain = this.domain, revision = this.domainRevision;
+            this.checking = true; this.message = ''; this.errorDetails = null; this.verified = false;
+            try {
+                await api('/settings/panel-domain/check', { method: 'POST', body: { domain }, timeout: 45000, silent: true });
+                if (this.domain !== domain || this.domainRevision !== revision) return;
+                this.message = t('settings.panel_domain_verified'); this.verified = true;
+            } catch (e) { if (this.domain === domain && this.domainRevision === revision) { this.message = this.certificateErrorText(e.code, e.message); this.errorDetails = e.details || null; } }
+            finally { this.checking = false; }
+        },
+        async apply() {
+            if (this.starting || this.status.running) return;
+            const domain = this.domain, revision = this.domainRevision;
+            this.starting = true;
+            try {
+                if (!await confirmModal(t('settings.panel_certificate_confirm')) || this.domain !== domain || this.domainRevision !== revision) return;
+                this.message = ''; this.errorDetails = null; this.verified = false;
+                await api('/settings/panel-certificate', { method: 'POST', body: { domain }, silent: true });
+                await this.refresh();
+            } catch (e) { this.message = this.certificateErrorText(e.code, e.message); this.errorDetails = e.details || null; }
+            finally { this.starting = false; }
+        },
+    };
 }
 </script>
 

@@ -1,19 +1,26 @@
 {{template "base" .}}
 {{define "dashboard_content"}}
-<div>
-    <p class="text-sm text-gray-400 mb-5">{{t .Lang "dashboard.introduction"}}</p>
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-6" x-data="versionCheck()" x-init="scheduleCheck()">
-        <div class="flex flex-wrap items-center gap-3">
-            <h2 class="text-xl font-bold text-white">{{t .Lang "nav.dashboard"}}</h2>
-            <span class="version-pill text-xs px-2 py-0.5">{{.PanelVersion}}</span>
-            <a x-show="hasUpdate" href="/{{.RandomSuffix}}/settings#system-updates" class="text-xs bg-yellow-600 text-yellow-100 px-2 py-0.5 rounded hover:bg-yellow-500" x-text="t('dashboard.update_available', { version: latestVersion })"></a>
-            <a x-show="sysCount > 0" href="/{{.RandomSuffix}}/settings#system-updates" class="text-xs bg-red-700 text-red-100 px-2 py-0.5 rounded hover:bg-red-600" x-text="t('dashboard.system_updates', { count: sysCount })"></a>
-            <span x-show="checkError" x-text="checkError" class="text-xs text-red-300"></span>
+<div class="overview-page">
+    <div class="overview-heading" x-data="versionCheck()" x-init="scheduleCheck()">
+        <div class="overview-heading-copy">
+            <div class="overview-heading-title">
+                <h1 class="page-title">{{t .Lang "nav.dashboard"}}</h1>
+                <span class="version-pill text-xs px-2 py-0.5">{{.PanelVersion}}</span>
+            </div>
+            <p class="overview-introduction">{{t .Lang "dashboard.introduction"}}</p>
+            <div class="overview-update-notices">
+                <a x-show="hasUpdate" href="/{{.RandomSuffix}}/settings#system-updates" class="overview-update-warning" x-text="t('dashboard.update_available', { version: latestVersion })"></a>
+                <a x-show="sysCount > 0" href="/{{.RandomSuffix}}/settings#system-updates" class="overview-update-alert" x-text="t('dashboard.system_updates', { count: sysCount })"></a>
+                <span x-show="checkError" x-text="checkError" class="overview-update-error"></span>
+            </div>
         </div>
-        <a href="/{{.RandomSuffix}}/vps" class="btn-secondary text-xs py-1.5 px-3">{{t .Lang "dashboard.vps_management"}}</a>
+        <a href="/{{.RandomSuffix}}/vps" class="btn-secondary overview-heading-action">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M5 4h14v6H5zM5 14h14v6H5zM8 7h.01M8 17h.01M12 7h4M12 17h4"/></svg>
+            {{t .Lang "dashboard.vps_management"}}
+        </a>
     </div>
     <div x-data="announcement()" x-init="fetch()" class="mb-4" x-show="visible">
-        <div class="bg-blue-900/30 border border-blue-700 rounded-lg p-4 text-blue-200 text-sm leading-relaxed prose-a:text-blue-300 prose-a:underline prose-a:hover:text-blue-100 flex items-start">
+        <div class="overview-announcement bg-blue-900/30 border border-blue-700 rounded-lg p-4 text-blue-200 text-sm leading-relaxed prose-a:text-blue-300 prose-a:underline prose-a:hover:text-blue-100 flex items-start">
             <svg class="w-5 h-5 mr-3 flex-shrink-0 mt-0.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
             </svg>
@@ -25,56 +32,61 @@
             </button>
         </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6" x-data="dashboardStats()" x-init="fetchStats()">
-        <div class="card">
-            <p class="text-gray-400 text-sm">{{t .Lang "dashboard.cpu_usage"}}</p>
-            <p class="text-3xl font-bold text-white mt-2" x-text="stats.cpu_percent?.toFixed(1) + '%'">--</p>
+    <dl class="overview-metrics" x-data="dashboardStats()" x-init="fetchStats()">
+        <div class="overview-metric">
+            <dt>{{t .Lang "dashboard.cpu_usage"}}</dt>
+            <dd class="overview-metric-value" x-text="Number.isFinite(stats.cpu_percent) ? stats.cpu_percent.toFixed(1) + '%' : '—'">—</dd>
+            <dd class="overview-meter" aria-hidden="true"><span :style="'width:' + Math.min(100, Math.max(0, stats.cpu_percent || 0)) + '%'"></span></dd>
         </div>
-        <div class="card">
-            <p class="text-gray-400 text-sm">{{t .Lang "dashboard.memory_usage"}}</p>
-            <p class="text-3xl font-bold text-white mt-2" x-text="stats.memory_percent?.toFixed(1) + '%'">--</p>
-            <p class="text-xs text-gray-500 mt-1" x-text="formatBytes(stats.memory_used_bytes) + ' / ' + formatBytes(stats.memory_total_bytes)"></p>
-            <p class="text-xs text-gray-500 mt-1" x-text="t('dashboard.swap_usage') + ': ' + formatBytes(stats.swap_used_bytes) + ' / ' + formatBytes(stats.swap_total_bytes)"></p>
+        <div class="overview-metric">
+            <dt>{{t .Lang "dashboard.memory_usage"}}</dt>
+            <dd class="overview-metric-value" x-text="Number.isFinite(stats.memory_percent) ? stats.memory_percent.toFixed(1) + '%' : '—'">—</dd>
+            <dd class="overview-meter overview-meter-memory" aria-hidden="true"><span :style="'width:' + Math.min(100, Math.max(0, stats.memory_percent || 0)) + '%'"></span></dd>
+            <dd class="overview-metric-detail" x-text="stats.memory_total_bytes ? formatBytes(stats.memory_used_bytes) + ' / ' + formatBytes(stats.memory_total_bytes) : '—'"></dd>
+            <dd class="overview-metric-detail" x-text="t('dashboard.swap_usage') + ': ' + (Number.isFinite(stats.swap_total_bytes) ? formatBytes(stats.swap_used_bytes) + ' / ' + formatBytes(stats.swap_total_bytes) : '—')"></dd>
         </div>
-        <div class="card">
-            <p class="text-gray-400 text-sm">{{t .Lang "dashboard.disk_usage"}}</p>
-            <p class="text-3xl font-bold text-white mt-2" x-text="stats.disk_total_bytes ? (stats.disk_used_bytes / stats.disk_total_bytes * 100).toFixed(1) + '%' : '--' ">--</p>
-            <p class="text-xs text-gray-500 mt-1" x-text="formatBytes(stats.disk_used_bytes) + ' / ' + formatBytes(stats.disk_total_bytes)"></p>
+        <div class="overview-metric">
+            <dt>{{t .Lang "dashboard.disk_usage"}}</dt>
+            <dd class="overview-metric-value" x-text="stats.disk_total_bytes ? (stats.disk_used_bytes / stats.disk_total_bytes * 100).toFixed(1) + '%' : '—'">—</dd>
+            <dd class="overview-meter overview-meter-disk" aria-hidden="true"><span :style="'width:' + (stats.disk_total_bytes ? Math.min(100, Math.max(0, stats.disk_used_bytes / stats.disk_total_bytes * 100)) : 0) + '%'"></span></dd>
+            <dd class="overview-metric-detail" x-text="stats.disk_total_bytes ? formatBytes(stats.disk_used_bytes) + ' / ' + formatBytes(stats.disk_total_bytes) : '—'"></dd>
         </div>
-        <div class="card">
-            <p class="text-gray-400 text-sm">{{t .Lang "dashboard.system_load"}}</p>
-            <p class="text-3xl font-bold text-white mt-2" x-text="stats.load_avg_1?.toFixed(1)">--</p>
-            <p class="text-xs text-gray-500 mt-1" x-text="stats.load_avg_5?.toFixed(1) + ' / ' + stats.load_avg_15?.toFixed(1)"></p>
+        <div class="overview-metric overview-metric-secondary">
+            <dt>{{t .Lang "dashboard.system_load"}}</dt>
+            <dd class="overview-metric-value" x-text="Number.isFinite(stats.load_avg_1) ? stats.load_avg_1.toFixed(1) : '—'">—</dd>
+            <dd class="overview-metric-detail" x-text="Number.isFinite(stats.load_avg_5) ? stats.load_avg_5.toFixed(1) + ' / ' + stats.load_avg_15?.toFixed(1) : '—'"></dd>
         </div>
-        <div class="card">
-            <p class="text-gray-400 text-sm">{{t .Lang "dashboard.uptime"}}</p>
-            <p class="text-3xl font-bold text-white mt-2" x-text="formatUptime(stats.uptime)">--</p>
+        <div class="overview-metric overview-metric-secondary overview-metric-uptime">
+            <dt>{{t .Lang "dashboard.uptime"}}</dt>
+            <dd class="overview-metric-value" x-text="Number.isFinite(stats.uptime) ? formatUptime(stats.uptime) : '—'">—</dd>
         </div>
-    </div>
+    </dl>
 
-    <div class="card mb-6" x-data="{ range: '24h' }">
-        <div class="flex items-center justify-between mb-4">
+    <div class="card overview-section overview-chart" x-data="{ range: '24h' }">
+        <div class="overview-section-heading">
             <h3 class="text-lg font-semibold text-white">{{t .Lang "dashboard.history_trend"}}</h3>
-            <div class="flex space-x-1">
-                <button @click="range='24h'; fetchMetrics('24h')" :class="range === '24h' ? 'btn-primary text-xs' : 'btn-secondary text-xs'" class="py-1 px-3">{{t .Lang "dashboard.hours_24"}}</button>
-                <button @click="range='7d'; fetchMetrics('7d')" :class="range === '7d' ? 'btn-primary text-xs' : 'btn-secondary text-xs'" class="py-1 px-3">{{t .Lang "dashboard.days_7"}}</button>
-                <button @click="range='15d'; fetchMetrics('15d')" :class="range === '15d' ? 'btn-primary text-xs' : 'btn-secondary text-xs'" class="py-1 px-3">{{t .Lang "dashboard.days_15"}}</button>
+            <div class="overview-range" role="group" aria-label="{{t .Lang "dashboard.history_trend"}}">
+                <button @click="range='24h'; fetchMetrics('24h')" :class="{ 'is-selected': range === '24h' }" :aria-pressed="range === '24h'">{{t .Lang "dashboard.hours_24"}}</button>
+                <button @click="range='7d'; fetchMetrics('7d')" :class="{ 'is-selected': range === '7d' }" :aria-pressed="range === '7d'">{{t .Lang "dashboard.days_7"}}</button>
+                <button @click="range='15d'; fetchMetrics('15d')" :class="{ 'is-selected': range === '15d' }" :aria-pressed="range === '15d'">{{t .Lang "dashboard.days_15"}}</button>
             </div>
         </div>
-        <canvas id="metricsCanvas" class="w-full" height="80"></canvas>
+        <div class="overview-chart-frame"><canvas id="metricsCanvas" class="w-full" height="280" role="img" aria-label="{{t .Lang "dashboard.history_trend"}}"></canvas></div>
+        <p id="metricsSummary" class="text-xs text-gray-400 mt-3" hidden></p>
+        <p id="metricsError" class="text-xs text-yellow-300 mt-3" role="status" hidden></p>
     </div>
 
-    <div class="card mb-6" x-data="siteResources()" x-init="initFetch()">
-        <div class="flex items-center justify-between mb-4">
+    <div class="card overview-section overview-resources" x-data="siteResources()" x-init="initFetch()">
+        <div class="overview-section-heading">
             <h3 class="text-lg font-semibold text-white">{{t .Lang "dashboard.site_resources"}}</h3>
-            <div class="flex items-center space-x-3">
-                <span class="text-xs text-gray-500" x-show="since" x-text="since"></span>
-                <button @click="fetch()" class="btn-secondary text-xs py-1 px-3">{{t .Lang "dashboard.refresh"}}</button>
+            <div class="overview-section-tools">
+                <span class="text-xs text-gray-500" x-show="since" x-text="since" :title="t('dashboard.sample_time')"></span>
+                <button @click="fetch(true)" :disabled="loading" :aria-busy="loading" class="btn-secondary text-xs py-1 px-3">{{t .Lang "dashboard.refresh"}}</button>
             </div>
         </div>
-        <p x-show="error" class="text-xs text-yellow-300 mb-3" x-text="t('dashboard.data_stale') + ': ' + error"></p>
-<div class="overflow-x-auto">
-            <table class="w-full text-sm">
+        <p x-show="error" class="text-xs text-yellow-300 mb-3" role="status" x-text="(loaded ? t('dashboard.data_stale') : t('dashboard.resources_unavailable')) + ': ' + error"></p>
+        <div class="overview-table-scroll" tabindex="0" role="region" aria-label="{{t .Lang "dashboard.site_resources"}}">
+            <table class="overview-resources-table w-full text-sm">
                 <thead class="border-b border-gray-700 text-gray-400">
                     <tr>
                         <th class="py-2 text-left">{{t .Lang "dashboard.site"}}</th>
@@ -94,8 +106,11 @@
                             <td class="py-2 text-right font-mono text-gray-400" x-text="s.proc_count"></td>
                         </tr>
                     </template>
-                    <tr x-show="sites.length === 0">
+                    <tr x-show="loaded && sites.length === 0">
                         <td colspan="4" class="py-4 text-center text-gray-500">{{t .Lang "dashboard.no_running_site_processes"}}</td>
+                    </tr>
+                    <tr x-show="!loaded">
+                        <td colspan="4" class="py-4 text-center text-gray-500" x-text="loading ? t('common.loading') : t('dashboard.resources_unavailable')"></td>
                     </tr>
                 </tbody>
             </table>
@@ -178,57 +193,132 @@ function dashboardStats() {
 // Chart.js — initialized outside Alpine to avoid proxy conflict
 (function() {
     let chart = null;
+    let metricsRequestID = 0;
+    let metricsController = null;
+    let metricsTimestamps = [];
+    let metricsTimes = [];
+    let metricsRange = '24h';
+
+    function metricAxisLabel(value) {
+        if (!metricsTimes.length) return chart?.data.labels[value] || '';
+        // Find the most recent sample's offset, retaining server-local time
+        // even if the selected range crosses a daylight-saving transition.
+        let low = 0, high = metricsTimes.length;
+        while (low < high) {
+            const middle = (low + high) >>> 1;
+            if (metricsTimes[middle] <= value) low = middle + 1; else high = middle;
+        }
+        const timestamp = metricsTimestamps[Math.max(0, low - 1)];
+        const zone = /([+-])(\d{2}):(\d{2})$/.exec(timestamp);
+        const offset = zone ? (Number(zone[2]) * 60 + Number(zone[3])) * (zone[1] === '-' ? -1 : 1) : 0;
+        const date = new Date(Number(value) + offset * 60000);
+        if (!Number.isFinite(date.getTime())) return '';
+        const iso = date.toISOString();
+        return metricsRange === '24h' ? iso.slice(11, 16) : iso.slice(5, 10) + ' ' + iso.slice(11, 16);
+    }
+
+    function metricStatus(id, message) {
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.textContent = message || '';
+        element.hidden = !message;
+    }
+
+    function cancelMetricsRequest() {
+        metricsRequestID++;
+        if (metricsController) metricsController.abort();
+        metricsController = null;
+    }
 
     async function fetchMetrics(range) {
+        if (metricsController) metricsController.abort();
+        const controller = new AbortController();
+        metricsController = controller;
+        const requestID = ++metricsRequestID;
         try {
-            const resp = await api('/dashboard/metrics?range=' + (range || '24h'));
-            if (resp.success && chart) {
+            const resp = await api('/dashboard/metrics?range=' + (range || '24h'), { silent: true, timeout: 15000, signal: controller.signal });
+            if (requestID === metricsRequestID && !controller.signal.aborted && resp.success && chart) {
                 chart.data.labels = resp.data.labels || [];
-                chart.data.datasets[0].data = resp.data.cpu || [];
-                chart.data.datasets[1].data = resp.data.memory || [];
-                chart.data.datasets[2].data = resp.data.load || [];
+                metricsTimestamps = resp.data.timestamps || [];
+                metricsRange = range || '24h';
+                metricsTimes = metricsTimestamps.map(timestamp => new Date(timestamp).getTime());
+                const series = [resp.data.cpu || [], resp.data.memory || [], resp.data.load || []];
+                const realTimes = metricsTimes.length > 0 && metricsTimes.length === chart.data.labels.length && metricsTimes.every(Number.isFinite) && series.every(values => values.length === metricsTimes.length);
+                if (!realTimes) metricsTimes = [];
+                chart.options.scales.x.type = realTimes ? 'linear' : 'category';
+                chart.options.scales.x.min = realTimes ? metricsTimes[0] : undefined;
+                chart.options.scales.x.max = realTimes ? metricsTimes[metricsTimes.length - 1] : undefined;
+                series.forEach((values, index) => {
+                    chart.data.datasets[index].data = realTimes ? values.map((y, i) => ({ x: metricsTimes[i], y })) : values;
+                });
+                metricStatus('metricsSummary', resp.data.reduced ? t('dashboard.chart_reduced_note', {
+                    samples: resp.data.sample_count, shown: resp.data.displayed_points,
+                    minutes: Math.ceil(resp.data.bucket_seconds / 60),
+                }) : '');
+                metricStatus('metricsError', '');
                 chart.update('none');
             }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            if (requestID === metricsRequestID && !controller.signal.aborted) {
+                const prefix = chart?.data.labels.length ? t('dashboard.data_stale') : t('dashboard.history_load_failed');
+                metricStatus('metricsError', prefix + ': ' + (e.message || t('dashboard.history_load_failed')));
+            }
+        } finally {
+            if (requestID === metricsRequestID) metricsController = null;
+        }
     }
 
     function initChart() {
         const canvas = document.getElementById('metricsCanvas');
         if (!canvas) return;
+        const theme = typeof getComputedStyle === 'function' ? getComputedStyle(canvas) : null;
+        const chartToken = (name, fallback) => theme?.getPropertyValue(name).trim() || fallback;
+        const cpuColor = chartToken('--panel-chart-cpu', '#2563eb');
+        const memoryColor = chartToken('--panel-chart-memory', '#ea580c');
+        const loadColor = chartToken('--panel-chart-load', '#16a34a');
+        const labelColor = chartToken('--panel-muted', '#637589');
+        const gridColor = chartToken('--panel-border', '#dce4ec');
         chart = new Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
                 labels: [],
                 datasets: [
-                    { label: 'CPU %', borderColor: '#3b82f6', backgroundColor: '#3b82f6', data: [], tension: 0.3, pointRadius: 0, pointHoverRadius: 5 },
-                    { label: t('dashboard.chart_memory'), borderColor: '#22c55e', backgroundColor: '#22c55e', data: [], tension: 0.3, pointRadius: 0, pointHoverRadius: 5 },
-                    { label: t('dashboard.chart_load'), borderColor: '#eab308', backgroundColor: '#eab308', data: [], tension: 0.3, pointRadius: 0, pointHoverRadius: 5 },
+                    { label: 'CPU %', borderColor: cpuColor, backgroundColor: cpuColor, borderWidth: 2, data: [], tension: 0, pointRadius: 0, pointHoverRadius: 5 },
+                    { label: t('dashboard.chart_memory'), borderColor: memoryColor, backgroundColor: memoryColor, borderWidth: 2, data: [], tension: 0, pointRadius: 0, pointHoverRadius: 5 },
+                    { label: t('dashboard.chart_load'), borderColor: loadColor, backgroundColor: loadColor, borderWidth: 2, data: [], tension: 0, pointRadius: 0, pointHoverRadius: 5 },
                 ]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
                 interaction: {
                     mode: 'index',
                     intersect: false,
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#9ca3af', maxTicksLimit: 12, maxRotation: 0 },
-                        grid: { color: '#374151' }
+                        type: 'category',
+                        ticks: { color: labelColor, maxTicksLimit: 12, maxRotation: 0, padding: 8, callback: metricAxisLabel },
+                        grid: { display: false },
+                        border: { display: false }
                     },
                     y: {
-                        ticks: { color: '#9ca3af' },
-                        grid: { color: '#374151' }
+                        ticks: { color: labelColor, padding: 8 },
+                        grid: { color: gridColor },
+                        border: { display: false }
                     }
                 },
                 plugins: {
-                    legend: { labels: { color: '#9ca3af' } },
+                    legend: { position: 'bottom', align: 'start', labels: { color: labelColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 20 } },
                     tooltip: {
                         mode: 'index',
                         intersect: false,
                         callbacks: {
                             title: function(items) {
-                                return t('dashboard.tooltip_time', { time: items[0].label });
+                                const timestamp = metricsTimestamps[items[0].dataIndex];
+                                const time = typeof timestamp === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(timestamp) ? timestamp.replace('T', ' ') : items[0].label;
+                                return t('dashboard.tooltip_time', { time });
                             },
                             label: function(item) {
                                 return item.dataset.label + ': ' + item.parsed.y.toFixed(2);
@@ -243,8 +333,13 @@ function dashboardStats() {
 
     // Expose for Alpine button clicks
     window.fetchMetrics = fetchMetrics;
-    // Canvas is already in DOM since script runs after template render
-    initChart();
+    window.addEventListener('pagehide', cancelMetricsRequest);
+    // Deferred app and Chart scripts finish before DOMContentLoaded.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initChart, { once: true });
+    } else {
+        initChart();
+    }
 })();
 
 function siteResources() {
@@ -252,19 +347,53 @@ function siteResources() {
         sites: [],
         since: '',
         timer: null,
-error: '',
-        async fetch() {
+        error: '',
+        loaded: false,
+        loading: false,
+        controller: null,
+        generation: 0,
+        destroyed: false,
+        pageHideHandler: null,
+        async fetch(fresh = false) {
+            if (this.loading || this.destroyed) return;
+            const controller = new AbortController();
+            const generation = ++this.generation;
+            this.controller = controller;
+            this.loading = true;
+            const current = () => !this.destroyed && !controller.signal.aborted && generation === this.generation;
             try {
-                const r = await api('/dashboard/site-resources');
-                if (!r.success) return;
-this.sites = r.data || [];
-this.error = '';
-                const now = new Date();
-                this.since = now.toLocaleTimeString(currentLocale());
-            } catch(e) { this.error = e.message; }
+                const r = await api('/dashboard/site-resources' + (fresh ? '?fresh=1' : ''), { silent: true, timeout: 15000, signal: controller.signal });
+                if (!current()) return;
+                if (!r.success || !Array.isArray(r.data)) throw new Error(t('dashboard.site_resources_load_failed'));
+                this.sites = r.data;
+                this.loaded = true;
+                this.error = '';
+                const sampledAt = r.sampled_at ? new Date(r.sampled_at) : null;
+                this.since = sampledAt && Number.isFinite(sampledAt.getTime()) ? sampledAt.toLocaleTimeString(currentLocale()) : '';
+            } catch(e) {
+                if (current()) this.error = e.message || t('dashboard.site_resources_load_failed');
+            } finally {
+                if (generation === this.generation) { this.loading = false; this.controller = null; }
+            }
         },
-        destroy() { if (this.timer) clearInterval(this.timer); },
+        cancelRequest() {
+            this.generation++;
+            if (this.controller) this.controller.abort();
+            this.controller = null;
+            this.loading = false;
+        },
+        destroy() {
+            this.destroyed = true;
+            this.cancelRequest();
+            if (this.timer) clearInterval(this.timer);
+            this.timer = null;
+            if (this.pageHideHandler) window.removeEventListener('pagehide', this.pageHideHandler);
+            this.pageHideHandler = null;
+        },
         initFetch() {
+            if (this.timer || this.destroyed) return;
+            this.pageHideHandler = () => this.cancelRequest();
+            window.addEventListener('pagehide', this.pageHideHandler);
             this.fetch();
             this.timer = setInterval(() => { if (!document.hidden) this.fetch(); }, 30000);
         }

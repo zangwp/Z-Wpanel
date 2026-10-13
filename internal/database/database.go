@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zangwp/Z-Wpanel/internal/accountsecurity"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -72,6 +74,18 @@ func RunMigrations() error {
 	// 版本化的同名步骤先把字段加上——两边最终都会收敛到同一个正确状态。
 	if err := ensureWPUpdateBatchSchema(); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
+	}
+	if _, err := DB.Exec(wpSecuritySourcePositionsSchema); err != nil {
+		return fmt.Errorf("security source cursor migration failed: %w", err)
+	}
+	if err := accountsecurity.InitMFASchema(DB); err != nil {
+		return fmt.Errorf("account MFA migration failed: %w", err)
+	}
+	if err := accountsecurity.InitAuditSchema(DB); err != nil {
+		return fmt.Errorf("account audit migration failed: %w", err)
+	}
+	if err := ensureCloudflareSecurityCoverageSchema(); err != nil {
+		return fmt.Errorf("Cloudflare website security migration failed: %w", err)
 	}
 	return nil
 }

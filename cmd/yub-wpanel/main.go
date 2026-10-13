@@ -445,6 +445,15 @@ func main() {
 	executor.StartWPSecurityEventIngestor()
 	log.Println("WordPress 安全探测事件持久化调度器已启动")
 	executor.StartFail2banSyncScheduler()
+	wpAccessContext, stopWPAccess := context.WithCancel(context.Background())
+	defer stopWPAccess()
+	wpAccessBroker, wpAccessErr := handlers.StartWPPanelAccessBroker(wpAccessContext)
+	if wpAccessErr != nil {
+		log.Printf("WordPress 面板访问入口暂不可用: %v", wpAccessErr)
+	} else {
+		defer wpAccessBroker.Close()
+	}
+
 	log.Println("Fail2ban 封禁状态同步调度器已启动")
 	go func() {
 		for {
@@ -453,7 +462,8 @@ func main() {
 		}
 	}()
 
-	r := router.SetupRouter(cfg, web.TemplatesFS, web.StaticFS, Version, *configPath)
+	r, closeAccountSecurity := router.SetupRouterWithCleanup(cfg, web.TemplatesFS, web.StaticFS, Version, *configPath)
+	defer closeAccountSecurity()
 	useTLS := cfg.Panel.TLSPort > 0 && cfg.Panel.TLSCertPath != "" && cfg.Panel.TLSKeyPath != ""
 	port := cfg.Panel.Port
 	if useTLS {
@@ -497,6 +507,13 @@ func main() {
 			log.Printf("面板 HTTP 服务异常退出: %v", serveErr)
 		}
 	}
+	executor.ClosePanelOperationAdmission()
+	executor.StopAlertMonitor()
+	queueCtx, queueCancel := context.WithTimeout(context.Background(), panelHTTPShutdownTimeout)
+	if err := executor.GlobalQueue.Shutdown(queueCtx); err != nil {
+		log.Printf("运行任务仍未结束，请核对恢复日志和安全快照: %v", err)
+	}
+	queueCancel()
 	executor.GlobalAdminer.DisableAll()
 	executor.StopAllImageOptimizationJobsForShutdown(wpCoreUpdateWorkerShutdownTimeout)
 	if migrationWorker != nil {

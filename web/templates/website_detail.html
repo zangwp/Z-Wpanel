@@ -1,6 +1,6 @@
 {{template "base" .}}
 {{define "websites_detail_content"}}
-<div x-data="websiteDetail()">
+<div class="site-detail-page" x-data="websiteDetail()">
 
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div>
@@ -10,7 +10,7 @@
             </h2>
             <p class="text-sm text-gray-500 mt-1">{{t .Lang "website.detail_subtitle"}}</p>
             <div x-show="site" class="flex flex-wrap items-center gap-2 mt-2">
-                <span :class="site?.status === 'active' ? 'badge-success' : 'badge-warning'" x-text="site?.status === 'active' ? t('website.status_running') : (site?.status === 'migrated' ? t('website.status_migrated') : (site?.status === 'deleting' ? t('website.status_deleting') : t('website.status_paused')))"></span>
+                <span :class="site?.status === 'active' ? 'badge-success' : 'badge-warning'" x-text="site?.status === 'active' ? t('website.status_running') : (site?.status === 'backup_maintenance' ? t('website.status_backup_maintenance') : site?.status === 'migrated' ? t('website.status_migrated') : (site?.status === 'deleting' ? t('website.status_deleting') : t('website.status_paused')))"></span>
                 <span class="badge-info" x-text="site?.site_type === 'php' ? t('website.generic_php_site') : 'WordPress'"></span>
                 <span :class="site?.ssl_enabled ? 'badge-success' : 'badge-warning'" x-text="site?.ssl_enabled ? t('website.ssl_enabled') : t('website.ssl_not_enabled')"></span>
             </div>
@@ -23,6 +23,9 @@
     </div>
 <template x-if="site">
     <div>
+ {{template "site_security_summary" .}}
+ {{template "site_cloudflare_security" .}}
+ {{template "wordpress_access" .}}
 
     <nav class="card py-2 px-3 mb-6 flex flex-wrap items-center gap-1" aria-label="{{t .Lang "website.detail_title"}}">
         <button type="button" @click="setDetailTab('overview')" :class="detailTab === 'overview' ? 'bg-blue-600 text-white' : 'bg-gray-900/40 text-gray-300 hover:text-white hover:bg-gray-700'" class="text-sm px-3 py-2 rounded">{{t .Lang "website.detail_nav_overview"}}</button>
@@ -726,16 +729,25 @@ location ^~ /api/ {
 </div>
 
 {{template "wp_anomaly_script" .}}
+{{template "site_security_summary_script" .}}
+{{template "site_cloudflare_security_script" .}}
+{{template "wordpress_access_script" .}}
 <script>
 function websiteDetail() {
     return {
-        jobStatusLabel(status) {
+jobStatusLabel(status) {
             const key = { success: 'website.job_success', failed: 'website.job_failed', error: 'website.job_failed', started: 'website.job_started' }[status];
             return key ? t(key) : (status || t('website.job_no_record'));
         },
-        wpCronJobs: [], wpCronLoaded: false, wpCronBusy: false, wpCronError: '',
-        sslRenewal: { enabled: false }, sslRenewalLoaded: false, sslRenewalBusy: false, sslRenewalError: '',
-        async loadSiteJobs() {
+wpCronJobs: [],
+wpCronLoaded: false,
+wpCronBusy: false,
+wpCronError: '',
+sslRenewal: { enabled: false },
+sslRenewalLoaded: false,
+sslRenewalBusy: false,
+sslRenewalError: '',
+async loadSiteJobs() {
             try {
                 const r = await api('/cron');
                 if (!r.success) throw new Error(r.message || t('common.operation_failed'));
@@ -743,7 +755,7 @@ function websiteDetail() {
                 this.wpCronLoaded = true; this.wpCronError = '';
             } catch(e) { this.wpCronLoaded = false; this.wpCronError = e.message; }
         },
-        async saveWPCron(job, enabled) {
+async saveWPCron(job, enabled) {
             if (this.wpCronBusy) return;
             this.wpCronBusy = true;
             try {
@@ -752,7 +764,7 @@ function websiteDetail() {
             } catch(e) { showToast(e.message, 'error'); }
             finally { await this.loadSiteJobs(); this.wpCronBusy = false; }
         },
-        async createWPCron() {
+async createWPCron() {
             if (this.wpCronBusy) return;
             this.wpCronBusy = true;
             try {
@@ -764,14 +776,14 @@ function websiteDetail() {
             } catch(e) { showToast(e.message, 'error'); }
             finally { this.wpCronBusy = false; }
         },
-        async loadSSLRenewal() {
+async loadSSLRenewal() {
             try {
                 const r = await api('/websites/' + this.site.id + '/ssl/renewal');
                 if (!r.success) throw new Error(r.message || t('common.operation_failed'));
                 this.sslRenewal = r.data; this.sslRenewalLoaded = true; this.sslRenewalError = '';
             } catch(e) { this.sslRenewalLoaded = false; this.sslRenewalError = e.message; }
         },
-        async saveSSLRenewal(enabled) {
+async saveSSLRenewal(enabled) {
             if (this.sslRenewalBusy) return;
             this.sslRenewalBusy = true;
             try {
@@ -781,34 +793,34 @@ function websiteDetail() {
             } catch(e) { showToast(e.message, 'error'); }
             finally { await this.loadSSLRenewal(); this.sslRenewalBusy = false; }
         },
-
-        site: null,
-		maintenance: { state: 'unknown', window_id: '' },
-		maintenanceEnabled: false,
-		maintenanceMinutes: 5,
-		maintenanceSaving: false,
-		maintenancePasswordInput: '',
-		maintenanceSecretError: false,
-		async loadMaintenancePassword() {
+site: null,
+ siteReadGeneration:0,siteReadController:null,siteLoadError:'',
+maintenance: { state: 'unknown', window_id: '' },
+maintenanceEnabled: false,
+maintenanceMinutes: 5,
+maintenanceSaving: false,
+maintenancePasswordInput: '',
+maintenanceSecretError: false,
+async loadMaintenancePassword() {
 			this.maintenancePasswordInput = ''; this.maintenanceSecretError = false;
 			try {
 				const r = await api('/websites/' + this.site.id + '/maintenance/password', {method:'POST', body:{}});
 				this.maintenancePasswordInput = r.data.password;
 			} catch (_) { this.maintenanceSecretError = true; }
 		},
-		async copyMaintenancePassword() {
+async copyMaintenancePassword() {
 			try { await navigator.clipboard.writeText(this.maintenancePasswordInput); showToast(t('maintenance.copied'), 'success'); }
 			catch (_) { showToast(t('common.operation_failed'), 'error'); }
 		},
-		generateMaintenancePassword() {
+generateMaintenancePassword() {
 			const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 			this.maintenancePasswordInput = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => alphabet[n & 31]).join('');
 		},
-		maintenanceTimer: null,
-		maintenanceStateText() {
+maintenanceTimer: null,
+maintenanceStateText() {
 			return ({ locked:t('maintenance.locked'), unlocked:t('maintenance.unlocked'), unlocked_permanent:t('maintenance.unlocked_permanent'), unlocking:t('maintenance.unlocking'), relocking:t('maintenance.relocking'), relock_failed:t('maintenance.relock_failed'), unknown:t('maintenance.unknown') })[this.maintenance.state] || t('maintenance.unknown');
 		},
-		async loadMaintenance(initial = false) {
+async loadMaintenance(initial = false) {
 			if (!this.site || this.site.site_type !== 'wordpress') return;
 			try {
 				const r = await api('/websites/' + this.site.id + '/maintenance');
@@ -819,7 +831,7 @@ function websiteDetail() {
 				if (initial) { this.maintenanceEnabled = r.data.enabled; this.maintenanceMinutes = r.data.minutes; await this.loadMaintenancePassword(); }
 			} catch (_) { this.maintenance.state = 'unknown'; }
 		},
-		async saveMaintenance() {
+async saveMaintenance() {
 			if (this.maintenanceSaving) return;
 			this.maintenanceSaving = true;
 			const body = { enabled: this.maintenanceEnabled, minutes: this.maintenanceMinutes, password: this.maintenancePasswordInput };
@@ -830,7 +842,7 @@ function websiteDetail() {
 			} catch (error) { showToast(t(error.message === 'lock_mode_required' ? 'maintenance.lock_mode_required' : error.message === 'verification_failed' ? 'maintenance.invalid_configuration' : error.message === 'operation_unavailable' ? 'maintenance.operation_unavailable' : 'maintenance.state_unknown'), 'error'); }
 			finally { delete body.password; this.maintenanceSaving = false; }
 		},
-		async relockMaintenance() {
+async relockMaintenance() {
 			this.maintenanceSaving = true;
 			try {
 				await api('/websites/' + this.site.id + '/maintenance/relock', {method:'POST',body:JSON.stringify({window_id:this.maintenance.window_id})});
@@ -838,82 +850,82 @@ function websiteDetail() {
 			} catch (_) { showToast(t('maintenance.state_unknown'), 'error'); await this.loadMaintenance(); }
 			finally { this.maintenanceSaving = false; }
 		},
-		destroy() { if (this.maintenanceTimer) clearInterval(this.maintenanceTimer); if (this.hashListener) window.removeEventListener('hashchange', this.hashListener); },
-        loading: true,
-        sslModalOpen: false,
-        sslMode: 'auto',
-        sslCert: '',
-        sslKey: '',
-        sslSubmitting: false,
-        sslExportEnabled: false,
-        sslExportSaving: false,
-        logType: 'access',
-        logContent: '',
-        logLineLimit: 200,
-        logFiles: [],
-        logFullscreen: false,
-        nginxPreContent: '',
-        nginxContent: '',
-        nginxSubmitting: false,
-        fcacheEnabled: false,
-        fcacheTTL: 300,
-        disableWPUpdates: false,
-        savedDisableWPUpdates: false,
-        disableFileEditing: false,
-        savedDisableFileEditing: false,
-        fileEditingSaving: false,
-        passwordResetMode: 'allow',
-        passwordResetSaving: false,
-        xmlrpcEnabled: false,
-        disableApplicationPasswords: false,
-        wpDebug: false,
-        wpDebugDisplay: false,
-        wpPostRevisions: -1,
-        wpMemoryLimit: '',
-        logRetentionDays: 7,
-        optimizationSaving: false,
-        fileLockSaving: false,
-        fileLockMode: 'standard',
-        fileLockPreview: null,
-        fileLockPreviewLoading: false,
-        pluginStatus: 'unknown',
-        pluginStatusLoading: false,
-        pluginInstalling: false,
-        monitoringEnabled: false,
-        monitoringInterval: 5,
-        monitoringSaving: false,
-        documentRootSubdir: '',
-        documentRootSaving: false,
-        cdnGroups: [],
-        cdnRealIPEnabled: false,
-        cdnRealIPGroupIDs: [],
-        cdnRealIPSaving: false,
-        accessLogMode: 'off',
-        expiresAtInput: '',
-        editingExpiry: false,
-        expirySaving: false,
-        domainModalOpen: false,
-        editDomain: '',
-        editAliasesStr: '',
-        domainSubmitting: false,
-        syncWPSiteURLs: false,
-        wpURLsLoading: false,
-        wpSiteURL: '',
-        wpHomeURL: '',
-        wpURLsError: '',
-        aiDevelopmentModalOpen: false,
-        aiCredentialPackage: null,
-        aiCredentialDownloaded: false,
-        aiAccess: { loading: true, enabled: false, status: 'disabled', busy: false, stage: '', installWPCLI: true, installNodeJS: false, confirmDomain: '', tools: [] },
-        detailTab: 'overview',
-        hashListener: null,
-        init() {
+destroy() { this.siteReadController?.abort(); this.siteReadGeneration++; this.detailDestroyed = true; this.cancelLogReads(); this.securityStatusGeneration++; if (this.maintenanceTimer) clearInterval(this.maintenanceTimer); if (this.hashListener) window.removeEventListener('hashchange', this.hashListener); },
+loading: true,
+sslModalOpen: false,
+sslMode: 'auto',
+sslCert: '',
+sslKey: '',
+sslSubmitting: false,
+sslExportEnabled: false,
+sslExportSaving: false,
+logType: 'access',
+logContent: '',
+logLineLimit: 200,
+logFiles: [],
+logFullscreen: false,
+nginxPreContent: '',
+nginxContent: '',
+nginxSubmitting: false,
+fcacheEnabled: false,
+fcacheTTL: 300,
+disableWPUpdates: false,
+savedDisableWPUpdates: false,
+disableFileEditing: false,
+savedDisableFileEditing: false,
+fileEditingSaving: false,
+passwordResetMode: 'allow',
+passwordResetSaving: false,
+xmlrpcEnabled: false,
+disableApplicationPasswords: false,
+wpDebug: false,
+wpDebugDisplay: false,
+wpPostRevisions: -1,
+wpMemoryLimit: '',
+logRetentionDays: 7,
+optimizationSaving: false,
+fileLockSaving: false,
+fileLockMode: 'standard',
+fileLockPreview: null,
+fileLockPreviewLoading: false,
+pluginStatus: 'unknown',
+pluginStatusLoading: false,
+pluginInstalling: false,
+monitoringEnabled: false,
+monitoringInterval: 5,
+monitoringSaving: false,
+documentRootSubdir: '',
+documentRootSaving: false,
+cdnGroups: [],
+cdnRealIPEnabled: false,
+cdnRealIPGroupIDs: [],
+cdnRealIPSaving: false,
+accessLogMode: 'off',
+expiresAtInput: '',
+editingExpiry: false,
+expirySaving: false,
+domainModalOpen: false,
+editDomain: '',
+editAliasesStr: '',
+domainSubmitting: false,
+syncWPSiteURLs: false,
+wpURLsLoading: false,
+wpSiteURL: '',
+wpHomeURL: '',
+wpURLsError: '',
+aiDevelopmentModalOpen: false,
+aiCredentialPackage: null,
+aiCredentialDownloaded: false,
+aiAccess: { loading: true, enabled: false, status: 'disabled', busy: false, stage: '', installWPCLI: true, installNodeJS: false, confirmDomain: '', tools: [] },
+detailTab: 'overview',
+hashListener: null,
+init() {
             this.applyDetailHash(false);
             this.hashListener = () => this.applyDetailHash();
             window.addEventListener('hashchange', this.hashListener);
             this.fetchDetail();
         },
-        detailTabHash(tab) {
+detailTabHash(tab) {
             return {
                 overview: 'overview',
                 cache: 'cache-performance',
@@ -921,7 +933,7 @@ function websiteDetail() {
                 logs: 'logs'
             }[tab] || 'overview';
         },
-        applyDetailHash(loadContent = true) {
+applyDetailHash(loadContent = true) {
             const hash = (window.location.hash || '').replace(/^#/, '');
             const tab = {
                 overview: 'overview',
@@ -936,7 +948,7 @@ function websiteDetail() {
             this.detailTab = tab;
             if (loadContent && this.site && tab === 'logs') this.fetchLogs();
         },
-        setDetailTab(tab, updateURL = true) {
+setDetailTab(tab, updateURL = true) {
             if (tab === 'security' && this.site?.site_type !== 'wordpress') tab = 'overview';
             this.detailTab = tab;
             if (updateURL) {
@@ -945,13 +957,19 @@ function websiteDetail() {
             }
             if (tab === 'logs') this.fetchLogs();
         },
-        async fetchDetail() {
+async fetchDetail() {
+ if(this.detailDestroyed)return;
+ this.siteReadController?.abort();const controller=new AbortController(),generation=++this.siteReadGeneration;
+ this.siteReadController=controller;this.siteLoadError='';
+ const current=()=>!this.detailDestroyed&&!controller.signal.aborted&&generation===this.siteReadGeneration;
+
             const id = window.location.pathname.split('/').filter(Boolean).pop();
             try {
-                const r = await api('/websites/' + id);
+                const r = await api('/websites/' + id,{silent:true,signal:controller.signal});
+                if (!current()) return;
                 if (r.success) {
                     this.site = r.data;
- await Promise.all([this.loadSiteJobs(),this.loadSSLRenewal()]);
+ await Promise.all([this.loadSiteJobs(),this.loadSSLRenewal()]); if(!current())return;
 					if (!this.maintenanceTimer && r.data.site_type === 'wordpress') {
 						this.loadMaintenance(true);
 						this.maintenanceTimer = setInterval(() => this.loadMaintenance(), 10000);
@@ -979,8 +997,9 @@ function websiteDetail() {
                     this.fileLockMode = r.data.file_lock_mode === 'strict' ? 'strict' : 'standard';
                     this.fileLockPreview = null;
                 }
-            } catch(e) { showToast(t('website.load_failed_with_error', { error: e.message }), 'error'); }
-            this.loading = false;
+            } catch(e) { if(current()){this.siteLoadError=e.message;showToast(t('website.load_failed_with_error', { error: e.message }), 'error');} }
+ if(!current())return;
+            this.loading = false; if (this.site && !this.detailDestroyed) this.fetchSiteSecurityStatus();
             Promise.allSettled([
                 this.fetchNginxCustom(),
                 this.fetchPluginStatus(),
@@ -992,7 +1011,7 @@ function websiteDetail() {
                 this.fetchLogFiles();
             }, 400);
         },
-        async fetchAIDevelopment() {
+async fetchAIDevelopment() {
             if (!this.site) return;
             this.aiAccess.loading = true;
             try {
@@ -1012,10 +1031,10 @@ function websiteDetail() {
                 }
             } catch(e) { this.aiAccess.loading = false; }
         },
-        developmentToolInstalled(id) {
+developmentToolInstalled(id) {
             return Array.isArray(this.aiAccess.tools) && this.aiAccess.tools.some(tool => tool.id === id && tool.installed);
         },
-        async requestAIDevelopmentPackage(path, body) {
+async requestAIDevelopmentPackage(path, body) {
             const prefix = document.body.dataset.panelPrefix || '';
             const response = await fetch(prefix + '/api' + path, {
                 method: 'POST',
@@ -1035,7 +1054,7 @@ function websiteDetail() {
             }
             return await response.blob();
         },
-        saveAIDevelopmentPackage(blob) {
+saveAIDevelopmentPackage(blob) {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -1045,7 +1064,7 @@ function websiteDetail() {
             link.remove();
             URL.revokeObjectURL(url);
         },
-        async enableAIDevelopment(force) {
+async enableAIDevelopment(force) {
             if (this.aiAccess.confirmDomain !== this.site.domain) return;
             if (!force && !await confirmModal(t('ai_development.enable_confirm', { domain: this.site.domain }))) return;
             this.aiAccess.busy = true;
@@ -1084,7 +1103,7 @@ function websiteDetail() {
             }
             if (retryForce) return this.enableAIDevelopment(true);
         },
-        async downloadAIDevelopmentCredential() {
+async downloadAIDevelopmentCredential() {
             if (this.aiCredentialPackage && !this.aiCredentialDownloaded) {
                 this.saveAIDevelopmentPackage(this.aiCredentialPackage);
                 this.aiCredentialPackage = null;
@@ -1108,7 +1127,7 @@ function websiteDetail() {
                 this.aiAccess.stage = '';
             }
         },
-        async copyAIDevelopmentFirstPrompt() {
+async copyAIDevelopmentFirstPrompt() {
             try {
                 await navigator.clipboard.writeText(t('ai_development.first_prompt'));
                 showToast(t('ai_development.first_prompt_copied'), 'success');
@@ -1116,7 +1135,7 @@ function websiteDetail() {
                 showToast(t('common.operation_failed'), 'error');
             }
         },
-        async disableAIDevelopment() {
+async disableAIDevelopment() {
             if (!await confirmModal(t('ai_development.disable_confirm'))) return;
             this.aiAccess.busy = true;
             try {
@@ -1128,7 +1147,7 @@ function websiteDetail() {
             } catch(e) { showToast(e.message, 'error'); }
             finally { this.aiAccess.busy = false; }
         },
-        async restoreMigrated() {
+async restoreMigrated() {
             if (!this.site || this.site.status !== 'migrated') return;
             if (!await confirmModal(t('website.restore_migrated_confirm', { domain: this.site.domain }))) return;
             try {
@@ -1139,7 +1158,7 @@ function websiteDetail() {
                 }
             } catch(e) { showToast(e.message, 'error'); }
         },
-        async fetchCDNGroups() {
+async fetchCDNGroups() {
             try {
                 const r = await api('/security/cdn-realip-groups');
                 if (r.success) {
@@ -1148,10 +1167,10 @@ function websiteDetail() {
                 }
             } catch(e) {}
         },
-        selectableCDNGroups() {
+selectableCDNGroups() {
             return this.cdnGroups.filter(g => g.provider !== 'cloudflare');
         },
-        normalizeCDNRealIPSelection() {
+normalizeCDNRealIPSelection() {
             const currentIDs = this.cdnRealIPGroupIDs.map(id => parseInt(id));
             const selected = this.cdnGroups.filter(g => currentIDs.includes(g.id));
             const selectedNonCloudflareIDs = selected.filter(g => g.provider !== 'cloudflare').map(g => g.id);
@@ -1160,7 +1179,7 @@ function websiteDetail() {
             }
             this.cdnRealIPGroupIDs = selectedNonCloudflareIDs;
         },
-        normalizeCDNRealIPCompatibility(changedGroup) {
+normalizeCDNRealIPCompatibility(changedGroup) {
             if (!this.cdnRealIPGroupIDs.map(Number).includes(changedGroup.id)) return;
             const changedCompatible = !(changedGroup.ip_ranges || '').trim();
             this.cdnRealIPGroupIDs = this.cdnRealIPGroupIDs.filter(id => {
@@ -1169,7 +1188,7 @@ function websiteDetail() {
                 return changedCompatible ? group.id === changedGroup.id : (group.ip_ranges || '').trim();
             });
         },
-        cdnRealIPModeText() {
+cdnRealIPModeText() {
             if (!this.cdnRealIPEnabled) return '';
             const currentIDs = this.cdnRealIPGroupIDs.map(id => parseInt(id));
             const selected = this.selectableCDNGroups().filter(g => currentIDs.includes(g.id));
@@ -1181,7 +1200,7 @@ function websiteDetail() {
             }
             return t('website.cdn_strict_origin_ips');
         },
-        async saveCDNRealIP() {
+async saveCDNRealIP() {
             this.cdnRealIPSaving = true;
             try {
                 const groupIDs = this.cdnRealIPGroupIDs.map(id => parseInt(id)).filter(id => this.selectableCDNGroups().some(g => g.id === id));
@@ -1198,7 +1217,7 @@ function websiteDetail() {
             } catch(e) { showToast(e.message, 'error'); }
             finally { this.cdnRealIPSaving = false; }
         },
-        async enableSSL() {
+async enableSSL() {
             if (this.sslMode === 'manual' && (!this.sslCert || !this.sslKey)) {
                 showToast(t('website.ssl_manual_required'), 'error');
                 return;
@@ -1221,12 +1240,12 @@ function websiteDetail() {
             } catch(e) { showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
             this.sslSubmitting = false;
         },
-        downloadSSLPackage() {
+downloadSSLPackage() {
             if (!this.site || !this.site.ssl_enabled) return;
             const prefix = '/' + document.body.dataset.panelPrefix.replace('/', '');
             window.open(prefix + '/api/websites/' + this.site.id + '/ssl/download');
         },
-        async saveSSLExport() {
+async saveSSLExport() {
             if (!this.site) return;
             this.sslExportSaving = true;
             try {
@@ -1243,7 +1262,7 @@ function websiteDetail() {
                 this.sslExportSaving = false;
             }
         },
-        async updateDomains() {
+async updateDomains() {
             this.domainSubmitting = true;
             try {
                 const newDomain = this.editDomain.trim();
@@ -1262,7 +1281,7 @@ function websiteDetail() {
             } catch(e) { showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
             this.domainSubmitting = false;
         },
-        async openDomainModal() {
+async openDomainModal() {
             this.editDomain = this.site.domain;
             this.editAliasesStr = this.site.aliases || '';
             this.syncWPSiteURLs = false;
@@ -1283,7 +1302,7 @@ function websiteDetail() {
                 this.wpURLsLoading = false;
             }
         },
-        previewWPURL(value) {
+previewWPURL(value) {
             try {
                 const parsed = new URL(value);
                 if (parsed.hostname.toLowerCase() !== this.site.domain.toLowerCase()) return '';
@@ -1293,10 +1312,10 @@ function websiteDetail() {
                 return '';
             }
         },
-        canSyncWPSiteURLs() {
+canSyncWPSiteURLs() {
             return !!this.previewWPURL(this.wpSiteURL) && !!this.previewWPURL(this.wpHomeURL);
         },
-        async removeSSL() {
+async removeSSL() {
             if (!await confirmModal(t('website.confirm_delete_ssl', { domain: this.site.domain }))) return;
             try {
                 const r = await api('/websites/' + this.site.id + '/ssl', { method: 'DELETE' });
@@ -1308,7 +1327,7 @@ function websiteDetail() {
                 }
             } catch(e) { showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
         },
-        async fetchNginxCustom() {
+async fetchNginxCustom() {
             try {
                 const r = await api('/websites/' + this.site.id + '/nginx-custom');
                 if (r.success) {
@@ -1318,7 +1337,7 @@ function websiteDetail() {
                 }
             } catch(e) { /* 静默失败 */ }
         },
-        async saveDocumentRoot() {
+async saveDocumentRoot() {
             if (!this.site || this.site.site_type !== 'php') return;
             this.documentRootSaving = true;
             try {
@@ -1335,7 +1354,7 @@ function websiteDetail() {
             } catch(e) { showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
             this.documentRootSaving = false;
         },
-        async saveNginxCustom() {
+async saveNginxCustom() {
             this.nginxSubmitting = true;
             try {
                 const r = await api('/websites/' + this.site.id + '/nginx-custom', {
@@ -1350,67 +1369,109 @@ function websiteDetail() {
             } catch(e) { showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
             this.nginxSubmitting = false;
         },
-        async fetchLogs() {
-            if (!this.site) return;
+async fetchLogs() {
+            if (!this.site || this.detailTab !== 'logs' || this.detailDestroyed) return false;
+            this.logContentController?.abort();
+            const controller = new AbortController(); this.logContentController = controller;
+            const generation = ++this.logContentGeneration, siteID = this.site.id, type = this.logType, lines = this.logLineLimit || 200;
+            const current = () => !controller.signal.aborted && generation === this.logContentGeneration && this.site?.id === siteID && this.logType === type && (this.logLineLimit || 200) === lines && this.detailTab === 'logs' && !this.detailDestroyed;
+            this.logContentLoading = true; this.logContentLoaded = false; this.logContentError = ''; this.syncLogLoading();
             try {
-                let url = '/websites/' + this.site.id + '/logs?type=' + this.logType + '&lines=' + encodeURIComponent(this.logLineLimit || 200);
-                const r = await api(url);
-                if (r.success) {
-                    this.logContent = r.data.content;
-                }
-            } catch(e) { showToast(t('website.load_logs_failed', { error: e.message }), 'error'); }
+                const url = '/websites/' + siteID + '/logs?type=' + type + '&lines=' + encodeURIComponent(lines);
+                const r = await api(url, {signal:controller.signal, timeout:20000, cache:'no-store', silent:true});
+                if (!current()) return false;
+                if (!r.success || typeof r.data?.content !== 'string') throw new Error(t('common.operation_failed'));
+                this.logContent = r.data.content; this.logContentLoaded = true;
+                return true;
+            } catch(e) {
+                if (!current()) return false;
+                this.logContentError = t('website.load_logs_failed', { error: e.message });
+                showToast(this.logContentError, 'error');
+                return false;
+            } finally {
+                if (this.logContentController === controller) { this.logContentController = null; this.logContentLoading = false; this.syncLogLoading(); }
+            }
         },
-        async fetchLogFiles() {
-            if (!this.site) return;
+async fetchLogFiles() {
+            if (!this.site || this.detailTab !== 'logs' || this.detailDestroyed) return false;
+            this.logFilesController?.abort();
+            const controller = new AbortController(); this.logFilesController = controller;
+            const generation = ++this.logFilesGeneration, siteID = this.site.id, type = this.logType;
+            const current = () => !controller.signal.aborted && generation === this.logFilesGeneration && this.site?.id === siteID && this.logType === type && this.detailTab === 'logs' && !this.detailDestroyed;
+            this.logFilesLoading = true; this.logFilesLoaded = false; this.logFilesError = ''; this.syncLogLoading();
             try {
-                const r = await api('/websites/' + this.site.id + '/log-files?type=' + this.logType);
-                if (r.success) {
-                    this.logFiles = r.data.files || [];
-                }
-            } catch(e) { showToast(t('website.load_log_files_failed', { error: e.message }), 'error'); }
+                const r = await api('/websites/' + siteID + '/log-files?type=' + type, {signal:controller.signal, timeout:20000, cache:'no-store', silent:true});
+                if (!current()) return false;
+                if (!r.success || !Array.isArray(r.data?.files)) throw new Error(t('common.operation_failed'));
+                this.logFiles = r.data.files; this.logFilesLoaded = true;
+                return true;
+            } catch(e) {
+                if (!current()) return false;
+                this.logFilesError = t('website.load_log_files_failed', { error: e.message });
+                showToast(this.logFilesError, 'error');
+                return false;
+            } finally {
+                if (this.logFilesController === controller) { this.logFilesController = null; this.logFilesLoading = false; this.syncLogLoading(); }
+            }
         },
-        selectLogType(type) {
+selectLogType(type) {
+            if (!['access','error','security'].includes(type) || (type === 'security' && this.site?.site_type !== 'wordpress')) return;
+            this.cancelLogReads();
             this.logType = type;
-            this.fetchLogs();
-            this.fetchLogFiles();
+            this.logContent = ''; this.logFiles = [];
+            this.loadLogs();
         },
-        currentLogFilename() {
+currentLogFilename() {
             if (this.logType === 'error') return 'error.log';
             if (this.logType === 'security') return 'wp-security.log';
             return 'access.log';
         },
-        downloadLogFile(filename) {
+downloadLogFile(filename) {
             if (!this.site || !filename) return;
             const prefix = document.body.dataset.panelPrefix || '';
             window.open(prefix + '/api/websites/' + this.site.id + '/logs/download?type=' + encodeURIComponent(this.logType) + '&file=' + encodeURIComponent(filename));
         },
-        async setAccessLogMode(mode) {
+async setAccessLogMode(mode) {
+            if (!this.site || this.detailDestroyed || !['off','error_only','full'].includes(mode)) return;
+            const siteID = this.site.id;
             try {
-                const r = await api('/websites/' + this.site.id + '/access-log', { method: 'PUT', body: { mode } });
+                const r = await api('/websites/' + siteID + '/access-log', { method: 'PUT', body: { mode }, silent:true, timeout:20000 });
+                if (this.site?.id !== siteID || this.detailDestroyed) return;
                 if (r.success) {
                     this.accessLogMode = mode;
-                    if (mode === 'off') {
-                        this.logContent = '';
+                    if (mode === 'off' && this.logType === 'access') {
+                        this.logContentGeneration++; this.logContentController?.abort(); this.logContentController = null;
+                        this.logContent = ''; this.logContentError = ''; this.logContentLoading = false; this.logContentLoaded = true; this.syncLogLoading();
                     }
                     showToast(r.data?.message, 'success');
                 } else {
                     showToast(r.data?.message || t('common.operation_failed'), 'error');
                 }
-            } catch(e) { showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
+            } catch(e) { if (this.site?.id === siteID && !this.detailDestroyed) showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
         },
-        async clearLogs() {
-            const label = this.logType === 'error' ? t('website.log_type_error') : (this.logType === 'security' ? t('website.log_type_security') : t('website.log_type_access'));
-            if (!await confirmModal(t('website.confirm_clear_logs', { label }))) return;
+async clearLogs() {
+            if (!this.site || this.detailTab !== 'logs' || this.detailDestroyed || this.logClearing) return;
+            const siteID = this.site.id, type = this.logType;
+            let generation = this.logViewGeneration;
+            const current = () => generation === this.logViewGeneration && this.site?.id === siteID && this.logType === type && this.detailTab === 'logs' && !this.detailDestroyed;
+            const label = type === 'error' ? t('website.log_type_error') : (type === 'security' ? t('website.log_type_security') : t('website.log_type_access'));
+            this.logClearing = true;
             try {
-                const r = await api('/websites/' + this.site.id + '/logs?type=' + this.logType, { method: 'DELETE' });
+                if (!await confirmModal(t('website.confirm_clear_logs', { label })) || !current()) return;
+                this.cancelLogReads(); generation = this.logViewGeneration;
+                const r = await api('/websites/' + siteID + '/logs?type=' + type, { method: 'DELETE', silent:true, timeout:20000 });
+                if (!current()) return;
                 if (r.success) {
+                    this.cancelLogReads();
                     showToast(t('website.logs_cleared'), 'success');
                     this.logContent = t('website.log_empty_or_missing');
+                    this.logContentLoaded = true;
                     this.fetchLogFiles();
                 }
-            } catch(e) { showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
+            } catch(e) { if (current()) showToast(t('website.operation_failed_with_error', { error: e.message }), 'error'); }
+            finally { this.logClearing = false; }
         },
-        async fetchPluginStatus() {
+async fetchPluginStatus() {
             if (!this.site || this.site.site_type !== 'wordpress' || this.pluginStatusLoading) return;
             this.pluginStatusLoading = true;
             this.pluginStatus = 'unknown';
@@ -1424,7 +1485,7 @@ function websiteDetail() {
                 this.pluginStatusLoading = false;
             }
         },
-        async installPlugin() {
+async installPlugin() {
             this.pluginInstalling = true;
             try {
                 const r = await api('/websites/' + this.site.id + '/install-plugin', { method: 'POST' });
@@ -1433,21 +1494,21 @@ function websiteDetail() {
             } catch(e) { showToast(e.message, 'error'); }
             this.pluginInstalling = false;
         },
-        async rebuildPluginConfig() {
+async rebuildPluginConfig() {
             if (!await confirmModal(t('website.rebuild_plugin_config_confirm'))) return;
             await this.installPlugin();
         },
-        fileLockStatusText() {
+fileLockStatusText() {
             if (this.site.file_lock_apply_status === 'applying') return t('website.processing');
             if (this.fileLockApplyIncomplete()) return t('website.file_lock_apply_failed');
             if (!this.site.file_lock_enabled) return t('website.file_unlocked');
             if (this.site.file_lock_mode === 'legacy') return t('website.file_lock_legacy');
             return this.site.file_lock_mode === 'strict' ? t('website.file_lock_strict') : t('website.file_lock_standard');
         },
-        fileLockApplyIncomplete() {
+fileLockApplyIncomplete() {
             return this.site.file_lock_apply_status === 'failed';
         },
-        fileLockDisplayPath(path) {
+fileLockDisplayPath(path) {
             const labels = {
                 'wp-content/uploads': t('website.file_lock_path_uploads'),
                 'wp-content/cache': t('website.file_lock_path_cache'),
@@ -1467,7 +1528,7 @@ function websiteDetail() {
             };
             return labels[path] || path;
         },
-        async loadFileLockPreview() {
+async loadFileLockPreview() {
             if (!this.site?.id) return null;
             this.fileLockPreviewLoading = true;
             try {
@@ -1481,7 +1542,7 @@ function websiteDetail() {
                 this.fileLockPreviewLoading = false;
             }
         },
-        async applyFileLock(enabled) {
+async applyFileLock(enabled) {
             let prompt = t('website.file_lock_disable_confirm');
             if (enabled) {
                 const preview = await this.loadFileLockPreview();
@@ -1512,7 +1573,7 @@ function websiteDetail() {
             }
             this.fileLockSaving = false;
         },
-        async saveMonitoring() {
+async saveMonitoring() {
             this.monitoringSaving = true;
             try {
                 await api('/websites/' + this.site.id + '/monitoring', {
@@ -1523,7 +1584,7 @@ function websiteDetail() {
             } catch(e) { showToast(t('website.save_failed_with_error', { error: e.message }), 'error'); }
             this.monitoringSaving = false;
         },
-        async saveExpiry() {
+async saveExpiry() {
             this.expirySaving = true;
             try {
                 await api('/websites/' + this.site.id + '/expiry', {
@@ -1536,7 +1597,7 @@ function websiteDetail() {
             } catch(e) { showToast(t('website.save_failed_with_error', { error: e.message }), 'error'); }
             this.expirySaving = false;
         },
-        async saveWPOptimizations() {
+async saveWPOptimizations() {
             this.optimizationSaving = true;
             try {
                 await api('/websites/' + this.site.id + '/wp-optimizations', {
@@ -1560,7 +1621,7 @@ function websiteDetail() {
             } catch(e) { showToast(t('website.save_failed_with_error', { error: e.message }), 'error'); }
             this.optimizationSaving = false;
         },
-        async saveFileEditingProtection() {
+async saveFileEditingProtection() {
             if (this.site.file_lock_enabled) return;
             this.fileEditingSaving = true;
             try {
@@ -1577,7 +1638,7 @@ function websiteDetail() {
             }
             this.fileEditingSaving = false;
         },
-        async savePasswordReset() {
+async savePasswordReset() {
             this.passwordResetSaving = true;
             try {
                 const r = await api('/websites/' + this.site.id + '/password-reset', {
@@ -1589,7 +1650,7 @@ function websiteDetail() {
             } catch(e) { showToast(e.message, 'error'); }
             this.passwordResetSaving = false;
         },
-        async saveLogRetention() {
+async saveLogRetention() {
             try {
                 await api('/websites/' + this.site.id + '/log-retention', {
                     method: 'PUT',
@@ -1597,14 +1658,150 @@ function websiteDetail() {
                 });
             } catch(e) {}
         },
-        async clearFCache() {
+async clearFCache() {
             if (!await confirmModal(t('website.confirm_clear_cache'))) return;
             try {
                 await api('/websites/' + this.site.id + '/cache', { method: 'DELETE' });
                 showToast(t('website.cache_cleared'), 'success');
             } catch(e) { showToast(e.message, 'error'); }
         },
-    }
+detailDestroyed: false,
+logsLoading: false,
+logContentLoaded: false,
+logFilesLoaded: false,
+logContentLoading: false,
+logFilesLoading: false,
+logContentError: '',
+logFilesError: '',
+logContentController: null,
+logFilesController: null,
+logContentGeneration: 0,
+logFilesGeneration: 0,
+logViewGeneration: 0,
+logClearing: false,
+securityStatus: null,
+securityStatusLoading: false,
+securityStatusAttempted: false,
+securityStatusError: '',
+securityStatusGeneration: 0,
+siteSecurityGroups: [
+            {id:'requests', title:'website.security_group_requests', keys:['https','login_protection','sensitive_files','uploads_php','sql_injection']},
+            {id:'wordpress', title:'website.security_group_wordpress', keys:['xmlrpc','application_passwords','file_editing','file_lock','debug_display']},
+            {id:'operations', title:'website.security_group_operations', keys:['uptime_monitor','anomaly_monitor','wp_updates','backup']},
+        ],
+siteSecurityCheck(key) {
+            if (this.securityStatusLoading) return {state:'unknown'};
+            if (this.securityStatusError) return {state:'error'};
+            const check = this.securityStatus?.checks?.find(item => item && item.key === key);
+            if (!check || !['effective','runtime_verified','ready','configured','disabled','unsupported','error','unknown'].includes(check.state)) return {state:'unknown'};
+            if (check.state === 'effective' && check.effective !== true) return {state:'unknown'};
+            if (['configured','ready','runtime_verified'].includes(check.state) && check.configured !== true) return {state:'unknown'};
+            if (['ready','runtime_verified'].includes(check.state) && check.runtime_ready !== true) return {state:'unknown'};
+            return check;
+        },
+siteSecurityTitle(key) { const textKey = 'website.security_check_' + key; return t(textKey); },
+siteSecurityStateText(key) {
+            if (this.securityStatusLoading) return t('website.security_checking');
+            const check = this.siteSecurityCheck(key), state = check.state;
+            if (state === 'ready' && ['file_editing_managed_by_file_lock','file_lock_applied','uptime_check_succeeded','anomaly_check_succeeded'].includes(check.reason_code)) return t('site_security.state_' + check.reason_code);
+            if (state === 'configured' && check.reason_code === 'file_lock_temporarily_unlocked') return t('site_security.state_file_lock_temporarily_unlocked');
+            if (state === 'configured' && check.can_verify === false) return t(['uptime_check_pending','uptime_check_stale','anomaly_check_pending','anomaly_check_stale'].includes(check.reason_code) ? 'site_security.state_waiting_check' : 'site_security.state_configured');
+            const textKey = (['ready','runtime_verified'].includes(state) ? 'site_security.state_' : 'website.security_state_') + state;
+            return t(textKey);
+        },
+siteSecurityClass(key) {
+            const check = this.siteSecurityCheck(key), state = check.state;
+            return state === 'effective' ? 'badge-success' : state === 'error' || (state === 'configured' && check.can_verify !== false) ? 'badge-warning' : 'badge-info';
+        },
+fileEditingManagedByLock() {
+            const check = this.siteSecurityCheck('file_editing');
+            return this.site?.file_lock_enabled === true && this.site.file_lock_apply_status === 'ready' && check.state === 'ready' && check.reason_code === 'file_editing_managed_by_file_lock' && check.details?.protected_by === 'file_lock' && check.can_verify === false;
+        },
+siteSecurityCheckedAt() {
+            const value = this.securityStatus?.checked_at;
+            const date = new Date(value);
+            return value && Number.isFinite(date.getTime()) ? date.toLocaleString(currentLocale()) : '—';
+        },
+async fetchSiteSecurityStatus() {
+            if (!this.site || this.securityStatusLoading) return;
+            const siteID = this.site.id;
+            const generation = ++this.securityStatusGeneration;
+            this.securityStatusLoading = true; this.securityStatusError = ''; this.securityStatus = null;
+            try {
+                const response = await api('/websites/' + siteID + '/security-status', {silent:true,cache:'no-store',timeout:20000});
+                if (!response.success || !response.data || Number(response.data.site_id) !== Number(siteID) || !Array.isArray(response.data.checks)) throw new Error(t('website.security_load_failed'));
+                if (generation !== this.securityStatusGeneration || this.site?.id !== siteID) return;
+                this.securityStatus = response.data;
+            } catch (error) {
+                if (generation !== this.securityStatusGeneration || this.site?.id !== siteID) return;
+                this.securityStatus = null;
+                this.securityStatusError = error.message || t('website.security_load_failed');
+            } finally {
+                if (generation === this.securityStatusGeneration) { this.securityStatusLoading = false; this.securityStatusAttempted = true; }
+            }
+        },
+refreshSiteSecurityAfterChange() {
+            this.securityStatusGeneration++;
+            this.securityStatus = null; this.securityStatusAttempted = false; this.securityStatusLoading = false; this.securityStatusError = '';
+            if (this.detailTab === 'security') this.fetchSiteSecurityStatus();
+        },
+openSiteSSLSettings() {
+            this.setDetailTab('overview');
+            this.$nextTick(() => document.getElementById('site-ssl')?.scrollIntoView({block:'start'}));
+        },
+siteSecurityPolicyReady() {
+            const site = this.site;
+            return !!site && site.site_type === 'wordpress' &&
+                ['litespeed_cache_enabled','disable_wp_updates','disable_file_editing','xmlrpc_enabled','disable_application_passwords','wp_debug_enabled','wp_debug_display','file_lock_enabled'].every(key => typeof site[key] === 'boolean') &&
+                Number.isInteger(site.litespeed_cache_ttl) && Number.isInteger(site.wp_post_revisions) && typeof site.wp_memory_limit === 'string';
+        },
+async saveSiteSecurityPolicy() {
+            if (!this.siteSecurityPolicyReady() || this.optimizationSaving || this.fileEditingSaving || this.site.file_lock_enabled) return;
+            const site = this.site;
+            const snapshot = {xmlrpc_enabled:!!this.xmlrpcEnabled, disable_application_passwords:!!this.disableApplicationPasswords};
+            this.optimizationSaving = true;
+            try {
+                const response = await api('/websites/' + site.id + '/wp-optimizations', {method:'PUT',body:{
+                    litespeed_cache_enabled:!!site.litespeed_cache_enabled,
+                    litespeed_cache_ttl:site.litespeed_cache_ttl || 300,
+                    disable_wp_updates:!!site.disable_wp_updates,
+                    expected_disable_wp_updates:!!site.disable_wp_updates,
+                    disable_file_editing:!!site.disable_file_editing,
+                    wp_debug_enabled:!!site.wp_debug_enabled,
+                    wp_debug_display:!!site.wp_debug_enabled && !!site.wp_debug_display,
+                    wp_post_revisions:site.wp_post_revisions ?? -1,
+                    wp_memory_limit:site.wp_memory_limit || '',
+                    ...snapshot,
+                }});
+                if (!response.success) throw new Error(response.message || t('website.security_save_failed'));
+                Object.assign(site, snapshot);
+                showToast(t('website.security_policy_saved'), 'success');
+                this.refreshSiteSecurityAfterChange();
+            } catch (error) { showToast(error.message || t('website.security_save_failed'), 'error'); }
+            finally { this.optimizationSaving = false; }
+        },
+syncLogLoading() {
+            this.logsLoading = this.logContentLoading || this.logFilesLoading;
+            this.logsLoaded = this.logContentLoaded && this.logFilesLoaded;
+        },
+cancelLogReads() {
+            this.logViewGeneration++;
+            this.logContentGeneration++; this.logFilesGeneration++;
+            this.logContentController?.abort(); this.logFilesController?.abort();
+            this.logContentController = null; this.logFilesController = null;
+            this.logContentLoaded = false; this.logFilesLoaded = false;
+            this.logContentLoading = false; this.logFilesLoading = false;
+            this.logContentError = ''; this.logFilesError = '';
+            this.syncLogLoading();
+        },
+async loadLogs(force = false) {
+            if (!this.site || this.detailTab !== 'logs' || this.detailDestroyed || (this.logsLoaded && !force) || this.logsLoading) return;
+            await Promise.all([this.fetchLogs(), this.fetchLogFiles()]);
+        },
+openLogs() {
+            this.setDetailTab('logs');
+        }
+}
 }
 </script>
 {{end}}
