@@ -163,7 +163,7 @@ func TestInstallRepairInstallsSQLiteOnlyAfterSafeConfigCheck(t *testing.T) {
 	binaryCheck := requiredIndex(t, script, `validate_existing_panel_binary ||`)
 	unitCheck := requiredIndex(t, script, `validate_repair_service_unit ||`)
 	cronCheck := requiredIndex(t, script, `validate_existing_panel_cron_file ||`)
-	sqliteInstall := requiredIndex(t, script, `DEBIAN_FRONTEND=noninteractive apt-get install -y sqlite3`)
+	sqliteInstall := requiredIndex(t, script, `DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sqlite3`)
 	backupAfterInstall := strings.Index(script[sqliteInstall:], "\n    prepare_repair_snapshot")
 	if backupAfterInstall < 0 {
 		t.Fatal("repair sqlite dependency install must be followed by prepare_repair_snapshot call")
@@ -173,7 +173,7 @@ func TestInstallRepairInstallsSQLiteOnlyAfterSafeConfigCheck(t *testing.T) {
 		t.Fatalf("repair safety order is invalid: config_check=%d binary_check=%d unit_check=%d cron_check=%d sqlite_install=%d backup=%d", configCheck, binaryCheck, unitCheck, cronCheck, sqliteInstall, backup)
 	}
 
-	componentInstall := requiredIndex(t, script, "apt-get install -y \\\n    iproute2 \\")
+	componentInstall := requiredIndex(t, script, "\ninstall_runtime_dependencies\n")
 	componentComplete := requiredIndex(t, script, `log_info "基础组件安装完成"`)
 	if strings.Contains(script[componentInstall:componentComplete], "sqlite3") {
 		t.Fatal("fresh install must not install repair-only sqlite3 dependency")

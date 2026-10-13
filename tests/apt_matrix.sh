@@ -5,7 +5,7 @@ set -euo pipefail
 installer=/src/install.sh
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C
 apt-get update
-apt-get install -y --no-install-recommends curl wget ca-certificates gnupg python3
+apt-get install -y --no-install-recommends python3 ca-certificates
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
 chmod 0755 /usr/sbin/policy-rc.d
 INSTALL_WORKDIR=$(mktemp -d)
@@ -21,7 +21,7 @@ python3 - "$installer" > "$INSTALL_WORKDIR/repositories.sh" <<'PY'
 import re,sys
 s=open(sys.argv[1],encoding='utf-8').read()
 constants=['PHP_SERIES','MARIADB_SERIES','MARIADB_APT_KEY_FINGERPRINT','REDIS_APT_KEY_SHA256','MIN_REDIS_PACKAGE_VERSION','DEBSURY_KEYRING_PACKAGE','DEBSURY_KEYRING_VERSION','DEBSURY_KEYRING_SHA256','PHP_KEYRING_MAX_BYTES']
-functions=['file_size_within_limit','download_file','apt_package_available','php_package_available','assert_managed_source_target','set_php_source_meta','configure_php_source','apt_candidate_version','install_verified_apt_key','configure_ubuntu_php_repository','select_php_source','configure_nginx_repository','configure_mariadb_repository','configure_redis_repository']
+functions=['install_base_dependencies','install_runtime_dependencies','file_size_within_limit','download_file','apt_package_available','php_package_available','assert_managed_source_target','set_php_source_meta','configure_php_source','apt_candidate_version','install_verified_apt_key','configure_ubuntu_php_repository','select_php_source','configure_nginx_repository','configure_mariadb_repository','configure_redis_repository']
 for key in constants:
  m=re.search(r'^'+key+r'=.*$',s,re.M);assert m,key;print(m[0])
 for name in functions:
@@ -30,6 +30,7 @@ for name in functions:
  assert m,name;print(m[0])
 PY
 source "$INSTALL_WORKDIR/repositories.sh"
+install_base_dependencies
 source /etc/os-release
 PLATFORM_ID=$ID
 PLATFORM_VERSION=$VERSION_ID
@@ -39,9 +40,9 @@ select_php_source "$PLATFORM_CODENAME"
 configure_nginx_repository
 configure_mariadb_repository
 configure_redis_repository
-apt-get install -y --no-install-recommends nginx mariadb-server redis-server fail2ban nftables cron iproute2 sshpass rsyslog jpegoptim optipng \
-    php${PHP_SERIES}-fpm php${PHP_SERIES}-cli php${PHP_SERIES}-mysql php${PHP_SERIES}-curl php${PHP_SERIES}-gd \
-    php${PHP_SERIES}-mbstring php${PHP_SERIES}-xml php${PHP_SERIES}-zip php${PHP_SERIES}-intl php${PHP_SERIES}-redis
+install_runtime_dependencies
+for command in gpg python3 rsync ssh sshpass logrotate jpegoptim optipng; do command -v "$command" >/dev/null; done
+python3 -c 'import pyinotify; import systemd.journal'
 "php${PHP_SERIES}" -m > "$INSTALL_WORKDIR/php-modules"
 for module in curl dom exif fileinfo gd intl mbstring mysqli openssl pdo_mysql redis SimpleXML xml xmlreader xmlwriter zip "Zend OPcache"; do
     grep -Fxq "$module" "$INSTALL_WORKDIR/php-modules"

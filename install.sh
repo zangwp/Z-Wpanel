@@ -1414,7 +1414,7 @@ DEBIANSOURCESEOF
 }
 
 base_packages_available() {
-    local packages=(ca-certificates wget curl gnupg lsb-release iproute2 nginx mariadb-server redis-server)
+    local packages=(ca-certificates wget curl gpg iproute2 nginx mariadb-server redis-server)
     local pkg=""
 
     for pkg in "${packages[@]}"; do
@@ -1424,6 +1424,20 @@ base_packages_available() {
         fi
     done
     return 0
+}
+
+install_base_dependencies() {
+    apt-get install -y --no-install-recommends curl wget unzip ca-certificates gpg python3
+}
+
+install_runtime_dependencies() {
+    apt-get install -y --no-install-recommends \
+        iproute2 nginx mariadb-server redis-server fail2ban python3-pyinotify python3-systemd \
+        nftables sshpass openssh-client rsync rsyslog logrotate cron \
+        jpegoptim optipng \
+        php${PHP_SERIES}-fpm php${PHP_SERIES}-cli php${PHP_SERIES}-mysql \
+        php${PHP_SERIES}-curl php${PHP_SERIES}-gd php${PHP_SERIES}-mbstring \
+        php${PHP_SERIES}-xml php${PHP_SERIES}-zip php${PHP_SERIES}-intl php${PHP_SERIES}-redis
 }
 
 configure_debian_source() {
@@ -2265,7 +2279,7 @@ if $REPAIR_MODE; then
     if ! command -v sqlite3 >/dev/null 2>&1; then
         log_warn "repair需要sqlite3创建面板数据库在线备份，正在自动安装"
         command -v apt-get >/dev/null 2>&1 || log_error "repair缺少apt-get，无法自动安装sqlite3"
-        DEBIAN_FRONTEND=noninteractive apt-get install -y sqlite3 || \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sqlite3 || \
             log_error "repair自动安装sqlite3失败，请检查APT后重试"
         command -v sqlite3 >/dev/null 2>&1 || log_error "repair安装sqlite3后仍无法找到该命令"
     fi
@@ -2358,7 +2372,7 @@ if ! $REPAIR_MODE; then
 select_platform_source
 
 # 安装基础依赖
-apt-get install -y curl wget unzip ca-certificates gnupg lsb-release
+install_base_dependencies
 
 # Debian 13 使用 Sury；Ubuntu 24.04 使用 PHP PPA；Ubuntu 26.04 使用原生 PHP 8.5。
 INSTALL_STAGE="配置 PHP APT 源"
@@ -2373,28 +2387,7 @@ configure_redis_repository
 INSTALL_STAGE="安装系统组件"
 log_info "安装系统组件..."
 
-apt-get install -y \
-    iproute2 \
-    nginx \
-    mariadb-server \
-    redis-server \
-    fail2ban \
-    nftables \
-    sshpass \
-    rsyslog \
-    cron \
-    php${PHP_SERIES}-fpm \
-    php${PHP_SERIES}-mysql \
-    php${PHP_SERIES}-curl \
-    php${PHP_SERIES}-gd \
-    jpegoptim \
-    optipng \
-    php${PHP_SERIES}-mbstring \
-    php${PHP_SERIES}-xml \
-    php${PHP_SERIES}-zip \
-    php${PHP_SERIES}-intl \
-    php${PHP_SERIES}-redis \
-    php${PHP_SERIES}-cli
+install_runtime_dependencies
 
 "php${PHP_SERIES}" -m > "$INSTALL_WORKDIR/php-modules.txt"
 for module in curl dom exif fileinfo gd intl mbstring mysqli openssl pdo_mysql redis SimpleXML xml xmlreader xmlwriter zip "Zend OPcache"; do
