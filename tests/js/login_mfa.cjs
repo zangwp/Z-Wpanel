@@ -2,12 +2,19 @@ const fs = require('fs'), vm = require('vm'), assert = require('assert'), path =
 const repo = path.resolve(__dirname, '../..');
 const source = fs.readFileSync(path.join(repo, 'web/templates/login.html'), 'utf8');
 const script = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m => m[1].includes('function loginForm'))[1];
-let calls = [], focus = 0, redirects = 0, response;
+let calls = [], csrfCalls = [], focus = 0, redirects = 0, response;
 const context = {
   t: key => key, document: {body: {dataset: {panelPrefix: '/test'}}, querySelector: () => ({content: ''}), getElementById: () => ({focus() {focus++;}})},
   window: {location: {get href() {return this.target || '';}, set href(value) {this.target = value; redirects++;}}},
   setTimeout: () => {throw new Error('Successful login must not wait for a timer');}, requestAnimationFrame: fn => fn(),
-  fetch: async () => ({ok: true, json: async () => ({success: true, data: {token: 'test-csrf'}})}),
+  fetch: async (url, options) => {
+    assert.equal(url, '/test/api/auth/csrf-token');
+    assert.equal(options.method, 'GET');
+    assert.equal(options.credentials, 'same-origin');
+    assert.equal(options.cache, 'no-store');
+    csrfCalls.push(url);
+    return {ok: true, json: async () => ({success: true, data: {token: 'test-csrf'}})};
+  },
   api: async (url, opts) => {calls.push(opts.body); return typeof response === 'function' ? response() : response;}
 };
 vm.createContext(context); vm.runInContext(script, context);
@@ -28,5 +35,6 @@ form.$nextTick = fn => fn(); form.$refs = {codeInput: {focus() {focus++;}}};
   form.resetMFA(); assert(!form.mfaRequired); assert(!form.recoveryMode); assert.equal(form.password, '');
   const ordinary = context.loginForm(); ordinary.username = 'admin'; ordinary.password = 'synthetic-password';
   await ordinary.login(); assert.equal(redirects, 2); assert.equal(context.window.location.href, '/test/'); assert.equal(ordinary.password, ''); assert.equal(ordinary.code, '');
+  assert.equal(csrfCalls.length, calls.length, 'every login submission refreshes its pre-session token');
   console.log('PASS login: no premature MFA redirect, empty and invalid proof, duplicate guard, immediate normal/recovery redirect and secret cleanup');
 })().catch(error => {console.error(error); process.exit(1);});

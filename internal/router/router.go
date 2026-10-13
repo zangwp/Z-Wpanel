@@ -207,6 +207,15 @@ func SetupRouterWithCleanup(cfg *config.Config, tmplFS embed.FS, staticFS embed.
 	panelGroup.POST("/api/auth/login", middleware.CSRF(), func(c *gin.Context) {
 		authHandler.Login(c)
 	})
+	// Login needs a token before a panel session exists. Keep this read-only
+	// endpoint behind the random path and browser authentication gateway.
+	panelGroup.GET("/api/auth/csrf-token", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		if !middleware.SetCSRFToken(c) {
+			return
+		}
+		authHandler.CSRFToken(c)
+	})
 
 	cacheHelper := &handlers.CacheHelperHandler{}
 	pluginImageOptimizer := &handlers.ImageOptimizerHandler{}
@@ -256,7 +265,6 @@ func SetupRouterWithCleanup(cfg *config.Config, tmplFS embed.FS, staticFS embed.
 	authHandler = &handlers.AuthHandler{DB: db, Prefix: suffix, Tracker: attemptTracker, MFA: mfaService, Audit: auditService}
 	protected.POST("/api/auth/logout", authHandler.Logout)
 	protected.GET("/api/auth/check", authHandler.Check)
-	protected.GET("/api/auth/csrf-token", authHandler.CSRFToken)
 	protected.POST("/api/site-migration/pairing-package", siteMigrationHandler.GeneratePackage)
 	protected.POST("/api/site-migration/peers/connect", siteMigrationHandler.Connect)
 	protected.GET("/api/site-migration/peers", siteMigrationHandler.ListPeers)
