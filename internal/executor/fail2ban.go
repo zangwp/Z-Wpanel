@@ -30,6 +30,7 @@ var manualRemoveNginxBan = RemoveNginxBan
 var syncReplaceNginxBannedIPs = ReplaceNginxBannedIPs
 var unbanAllReplaceNginxBannedIPs = ReplaceNginxBannedIPs
 var conditionalRemoveNginxBan = RemoveNginxBan
+var deployFail2banSettings = deployFail2ban
 var syncAddPersistBan = AddPersistBan
 var syncRemovePersistBan = RemovePersistBan
 
@@ -717,6 +718,7 @@ func applyFail2banSettingsLocked() error {
 	for _, key := range []string{
 		"official_whitelist_ips",
 		"whitelist_ips",
+		"ssh_whitelist_ips",
 		"fail2ban_maxretry",
 		"fail2ban_findtime",
 		"wp_sqli_ban_threshold",
@@ -772,7 +774,7 @@ func applyFail2banSettingsLocked() error {
 	// The incremental ladder is intentionally fixed at 10m, 1h, 6h, 24h and 7d.
 	bt := 600
 
-	if err := deployFail2ban(webIPs, baseIPs, mr, ft, bt, sqliMR, sqliFT); err != nil {
+	if err := deployFail2banSettings(webIPs, settings["ssh_whitelist_ips"], mr, ft, bt, sqliMR, sqliFT); err != nil {
 		return err
 	}
 

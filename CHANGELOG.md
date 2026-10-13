@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.4.2 — 2026-10-13
+
+- Fix incomplete security settings by initializing the separate SSH whitelist on fresh installs and upgrades.
+- Apply SSH whitelist changes with validation and rollback; keep website, crawler and CDN exemptions out of SSH protection.
+
 ## v2.4.1 — 2026-10-13
 
 - Fix login token refresh before a panel session exists while retaining the random entry path, browser authentication and CSRF checks.

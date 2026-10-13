@@ -2,13 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/zangwp/Z-Wpanel/internal/config"
 	"github.com/zangwp/Z-Wpanel/internal/database"
@@ -132,5 +136,25 @@ func TestLoginTokenRefreshWorksBeforeSessionThroughRealRouter(t *testing.T) {
 	resp = request("GET", "/api/auth/check", nil, "", true)
 	if data := read(resp); resp.StatusCode != http.StatusOK || !bytes.Contains(data, []byte("wpadmin")) {
 		t.Fatalf("session unusable after login: %d %s", resp.StatusCode, data)
+	}
+	resp = request("GET", "/api/security/settings", nil, "", true)
+	data := read(resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("security settings status=%d", resp.StatusCode)
+	}
+	fixture := filepath.Join(dir, "security-settings.json")
+	if err := os.WriteFile(fixture, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatal("Node is required for the frontend API contract test:", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, "../../tests/js/security_center_state.cjs")
+	cmd.Env = append(os.Environ(), "YUB_SECURITY_SETTINGS_FIXTURE="+fixture)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("real security API rejected by frontend: %v\n%s", err, output)
 	}
 }

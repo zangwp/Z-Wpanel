@@ -17,6 +17,38 @@ import (
 	"github.com/zangwp/Z-Wpanel/internal/models"
 )
 
+func TestFail2banSSHDoesNotInheritWebsiteOrOfficialWhitelist(t *testing.T) {
+	openTestDB(t)
+	for key, value := range map[string]string{
+		"official_whitelist_ips": "198.51.100.0/24\n66.249.64.0/19",
+		"whitelist_ips":          "203.0.113.10",
+		"ssh_whitelist_ips":      "192.0.2.7",
+	} {
+		if _, err := database.GetDB().Exec(`UPDATE security_settings SET svalue=? WHERE skey=?`, value, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	previous := deployFail2banSettings
+	t.Cleanup(func() { deployFail2banSettings = previous })
+	stopBeforeDeployment := errors.New("stop before system mutation")
+	called := false
+	deployFail2banSettings = func(web, ssh string, _, _, _, _, _ int) error {
+		called = true
+		for _, expected := range []string{"198.51.100.0/24", "66.249.64.0/19", "203.0.113.10"} {
+			if !strings.Contains(web, expected) {
+				t.Fatalf("website exemption lost: %s", expected)
+			}
+		}
+		if ssh != "192.0.2.7" {
+			t.Fatalf("SSH inherited website or official exemptions: %q", ssh)
+		}
+		return stopBeforeDeployment
+	}
+	if err := applyFail2banSettingsLocked(); !errors.Is(err, stopBeforeDeployment) || !called {
+		t.Fatalf("actual Fail2ban settings deployment was not checked: %v", err)
+	}
+}
+
 func TestFail2banSettingsLockSerializesSnapshotThroughDeployment(t *testing.T) {
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})

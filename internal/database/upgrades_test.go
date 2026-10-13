@@ -23,6 +23,56 @@ func openTempDB(t *testing.T) {
 	})
 }
 
+func TestSSHWhitelistFreshInstallAndUpgradePreserveSeparateSettings(t *testing.T) {
+	openTempDB(t)
+	if err := RunMigrations(); err != nil {
+		t.Fatal(err)
+	}
+	var value string
+	if err := DB.QueryRow(`SELECT svalue FROM security_settings WHERE skey='ssh_whitelist_ips'`).Scan(&value); err != nil || value != "" {
+		t.Fatalf("fresh SSH whitelist=%q err=%v", value, err)
+	}
+	if err := RunUpgrades(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(`DELETE FROM schema_version`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(`UPDATE security_settings SET svalue='198.51.100.0/24' WHERE skey='whitelist_ips'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(`DELETE FROM security_settings WHERE skey='ssh_whitelist_ips'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(`INSERT INTO schema_version (version) VALUES ('1.0.68')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunUpgrades(); err != nil {
+		t.Fatal(err)
+	}
+	if err := DB.QueryRow(`SELECT svalue FROM security_settings WHERE skey='ssh_whitelist_ips'`).Scan(&value); err != nil || value != "" {
+		t.Fatalf("upgrade inherited website whitelist: %q err=%v", value, err)
+	}
+	if err := DB.QueryRow(`SELECT svalue FROM security_settings WHERE skey='whitelist_ips'`).Scan(&value); err != nil || value != "198.51.100.0/24" {
+		t.Fatal("upgrade changed the website whitelist", err)
+	}
+	if _, err := DB.Exec(`UPDATE security_settings SET svalue='192.0.2.7' WHERE skey='ssh_whitelist_ips'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(`DELETE FROM schema_version WHERE version='1.0.69'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunMigrations(); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunUpgrades(); err != nil {
+		t.Fatal(err)
+	}
+	if err := DB.QueryRow(`SELECT svalue FROM security_settings WHERE skey='ssh_whitelist_ips'`).Scan(&value); err != nil || value != "192.0.2.7" {
+		t.Fatalf("repeated migration reset explicit SSH whitelist: %q err=%v", value, err)
+	}
+}
+
 func TestFreshInstallRunsMigrationsAndRecordsLatestVersion(t *testing.T) {
 	openTempDB(t)
 
@@ -396,7 +446,7 @@ func TestUpgradeAddsWPUpdateSchemaFrom1031(t *testing.T) {
 			t.Fatalf("table %s exists=%d err=%v", table, exists, err)
 		}
 	}
-	if got := LatestVersion(); got != "1.0.68" {
+	if got := LatestVersion(); got != "1.0.69" {
 		t.Fatalf("LatestVersion=%q", got)
 	}
 	for _, column := range []string{"database_backup_mode", "database_backup_source_id", "auto_rollback", "batch_id"} {
