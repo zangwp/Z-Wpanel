@@ -257,7 +257,7 @@ func applySecuritySettingsRuntime(settings map[string]string, applyFail2ban func
 }
 
 func needsFail2banApply(settings map[string]string) bool {
-	for _, key := range []string{"fail2ban_maxretry", "fail2ban_findtime", "auto_whitelist_enabled", "whitelist_ips"} {
+	for _, key := range []string{"fail2ban_maxretry", "fail2ban_findtime", "auto_whitelist_enabled", "whitelist_ips", "ssh_whitelist_ips"} {
 		if _, ok := settings[key]; ok {
 			return true
 		}
@@ -728,7 +728,7 @@ func normalizeSecuritySetting(key string, val interface{}) (string, bool, error)
 	case "telemetry_url":
 		v, err := normalizeTelemetryURL(val)
 		return v, true, err
-	case "whitelist_ips":
+	case "whitelist_ips", "ssh_whitelist_ips":
 		v, ok := val.(string)
 		if !ok {
 			return "", false, fmt.Errorf("白名单格式不正确")

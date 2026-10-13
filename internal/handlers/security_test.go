@@ -19,6 +19,37 @@ import (
 	"github.com/zangwp/Z-Wpanel/internal/models"
 )
 
+func TestSSHWhitelistSaveAppliesAndRollsBackIndependently(t *testing.T) {
+	setupSecurityTestDB(t)
+	restoreSecurityExecutorHooks(t)
+	if _, err := database.GetDB().Exec(`UPDATE security_settings SET svalue='198.51.100.10' WHERE skey='whitelist_ips'`); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	applyFail2banSettings = func() error { calls++; return nil }
+	register := func(r *gin.Engine, h *SecurityHandler) { r.PUT("/settings", h.UpdateSettings) }
+	rec := performSecurityRequest(http.MethodPut, "/settings", `{"ssh_whitelist_ips":" 192.0.2.7 "}`, register)
+	if rec.Code != http.StatusOK || calls != 1 || securitySettingValue(t, "ssh_whitelist_ips") != "192.0.2.7" || securitySettingValue(t, "whitelist_ips") != "198.51.100.10" {
+		t.Fatalf("SSH whitelist was not applied independently: status=%d calls=%d body=%s", rec.Code, calls, rec.Body.String())
+	}
+	rec = performSecurityRequest(http.MethodPut, "/settings", `{"ssh_whitelist_ips":"not-an-ip"}`, register)
+	if rec.Code != http.StatusBadRequest || calls != 1 || securitySettingValue(t, "ssh_whitelist_ips") != "192.0.2.7" {
+		t.Fatal("invalid SSH whitelist changed runtime or stored data")
+	}
+	calls = 0
+	applyFail2banSettings = func() error {
+		calls++
+		if calls == 1 {
+			return errors.New("injected deployment failure")
+		}
+		return nil
+	}
+	rec = performSecurityRequest(http.MethodPut, "/settings", `{"ssh_whitelist_ips":"192.0.2.8"}`, register)
+	if rec.Code != http.StatusInternalServerError || calls != 2 || securitySettingValue(t, "ssh_whitelist_ips") != "192.0.2.7" {
+		t.Fatalf("SSH whitelist rollback failed: status=%d calls=%d body=%s", rec.Code, calls, rec.Body.String())
+	}
+}
+
 func TestRefreshWhitelistReportsQueuePressure(t *testing.T) {
 	previousEnqueue := enqueueOfficialWhitelistRefresh
 	enqueueOfficialWhitelistRefresh = func(context.Context) error {

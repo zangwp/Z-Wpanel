@@ -10,6 +10,16 @@ const rows = values => Object.entries({ ...required, ...values }).map(([skey,sva
 function setup(api, extra={}) { const c = { api, t: key => key, showToast() {}, confirmModal: async()=>true, location:{hash:'#account'}, ...extra }; vm.createContext(c); vm.runInContext(source,c); return { m: c.securitySettings(), c }; }
 const ok = data => ({ success:true, data });
 
+test('real router security settings unlock the actual page', {skip: !process.env.YUB_SECURITY_SETTINGS_FIXTURE}, async()=>{
+ const response=JSON.parse(fs.readFileSync(process.env.YUB_SECURITY_SETTINGS_FIXTURE,'utf8'));
+ const {m}=setup(async()=>response);
+ assert.equal(await m.fetchSettings(),true,m.settingsError);
+ assert.equal(m.settingsDisabled(),false);
+ assert.equal(m.settings.fail2ban_maxretry,5);
+ assert.equal(m.settings.fail2ban_findtime,60);
+ assert.equal(m.settings.ssh_whitelist_ips,'');
+});
+
 test('all settings writes and whitelist refresh stay blocked before loading', async()=>{
  let calls=0; const {m}=setup(async()=>{calls++;return ok({});});
  for(const method of ['saveFail2ban','saveSQLi','saveTelemetry','saveWebWhitelist','saveSSHWhitelist','saveGooglebotRanges','saveWPSecurityLogWhitelist','refreshWhitelist']) await m[method]();
