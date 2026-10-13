@@ -159,6 +159,53 @@ test('failed health checks preserve previous evidence with an explicit error', a
     assert.equal(manager.healthLoading, false);
 });
 
+test('PHP summaries distinguish failed checks, required gaps and recommended modules', () => {
+    const { context } = setup({ t: (key, values) => values ? `${key}:${values.count}` : key });
+    const manager = context.softwareManager();
+    assert.equal(manager.phpHealthSummary({ state: 'unknown', reason: 'probe_timeout' }), 'software.php_probe_timeout');
+    assert.equal(manager.phpHealthSummary({ state: 'unknown', reason: 'invalid_output' }), 'software.php_probe_invalid');
+    assert.equal(manager.phpHealthSummary({ state: 'warning', reason: 'extensions_missing', missing_required: 0, missing_recommended: 1 }), 'software.php_recommended_missing:1');
+    assert.equal(manager.phpHealthSummary({ state: 'warning', missing_required: 1, missing_recommended: 2 }), 'software.php_required_missing:1');
+    assert.equal(manager.phpHealthSummary({ state: 'warning', reason: 'opcache_disabled', missing_required: 0, missing_recommended: 0 }), 'software.php_opcache_disabled');
+    assert.equal(manager.phpHealthSummary({ state: 'ok', missing_required: 0, missing_recommended: 0 }), 'software.php_extensions_ready');
+});
+
+test('backup repair is unavailable for ready, optional-only, invalid or stale results', async () => {
+    const calls = [];
+    const { context } = setup({ api: async url => { calls.push(url); return { success: true }; } });
+    const manager = context.softwareManager();
+    for (const backup of [
+        { status: 'installed', configuration_status: 'ok', missing_required: [], dependencies: [] },
+        { configuration_status: 'ok', missing_required: [], dependencies: [{ id: 'sshpass', package: 'sshpass', required: false, status: 'missing' }] },
+        { configuration_status: 'error', missing_required: ['mysql'], dependencies: [{ id: 'mysql', package: 'mariadb-client', required: true, status: 'missing' }] },
+    ]) {
+        manager.health = { backup };
+        assert.equal(manager.canInstallBackupDependencies(), false);
+        await manager.installBackupDependencies();
+    }
+    manager.health = { backup: { configuration_status: 'ok', missing_required: ['mysql'], dependencies: [{ id: 'mysql', package: 'mariadb-client', required: true, status: 'missing' }] } };
+    assert.equal(manager.canInstallBackupDependencies(), true);
+    manager.healthError = 'latest read failed';
+    assert.equal(manager.canInstallBackupDependencies(), false);
+    await manager.installBackupDependencies();
+    assert.deepEqual(calls, []);
+});
+
+test('manual environment refresh exposes busy state and replaces failure with fresh evidence', async () => {
+    const pending = deferred();
+    const { context } = setup({ api: async () => pending.promise });
+    const manager = context.softwareManager();
+    manager.healthError = 'previous error';
+    const checking = manager.fetchHealth(true);
+    assert.equal(manager.healthLoading, true);
+    assert.equal(manager.healthError, '');
+    pending.resolve({ success: true, data: { checked_at: '2026-10-13T04:00:00Z', php: [{ version: '8.5', state: 'warning', missing_required: 0, missing_recommended: 1 }] } });
+    await checking;
+    assert.equal(manager.healthLoading, false);
+    assert.equal(manager.health.checked_at, '2026-10-13T04:00:00Z');
+    assert.equal(manager.runtimeHealth('8.5').state, 'warning');
+});
+
 test('dependency installation considers only currently required missing tools and refreshes on failure', async () => {
     const calls = [];
     const { context } = setup({ api: async (url, options) => {

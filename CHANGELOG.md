@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.4.3 — 2026-10-13
+
+- Fix PHP-FPM extension checks treating disabled CLI OPcache as a general startup failure; retain checks for real loading errors and mismatched configuration.
+- Separate PHP, backup-tool and Cron statuses, collapse extension details, and show refresh feedback and timestamps. Offer backup-tool repair only for confirmed missing requirements.
+
 ## v2.4.2 — 2026-10-13
 
 - Fix incomplete security settings by initializing the separate SSH whitelist on fresh installs and upgrades.

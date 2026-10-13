@@ -20,14 +20,41 @@
     <section x-show="activeSection === 'runtime'" x-cloak>
     <div class="card mb-6"><h3 class="text-lg font-semibold text-white">Nginx · PHP-FPM</h3><p class="text-sm text-gray-400 mt-2">{{t .Lang "software.nginx_runtime_help"}}</p></div>
     <section class="card mb-6" :aria-busy="healthLoading">
-        <div class="flex items-center justify-between gap-3 mb-4"><h3 class="text-lg font-semibold">{{t .Lang "software.health_title"}}</h3><button class="btn-secondary" @click="fetchHealth(true)" :disabled="healthLoading">{{t .Lang "common.refresh"}}</button></div>
+        <div class="flex items-center justify-between gap-3 mb-4"><h3 class="text-lg font-semibold">{{t .Lang "software.health_title"}}</h3><button type="button" class="btn-secondary" @click="fetchHealth(true)" :disabled="healthLoading || dependencyInstalling" x-text="t(healthLoading ? 'software.health_checking' : 'software.health_refresh')"></button></div>
         <p x-show="healthError" class="text-red-400 text-sm" role="alert" x-text="healthError"></p>
+        <p x-show="!health && !healthError" class="form-hint">{{t .Lang "software.health_checking"}}</p>
         <template x-for="runtime in (health?.php || [])" :key="runtime.version"><div class="mb-4">
-            <p class="font-semibold" x-text="'PHP-FPM ' + runtime.version"></p>
-            <div class="flex flex-wrap gap-2 mt-2"><template x-for="extension in runtime.extensions" :key="extension.name"><span :class="healthBadge(extension.state)" x-text="extension.name + ': ' + healthLabel(extension.state)"></span></template></div>
-            <p class="form-hint" x-show="runtime.reason" x-text="phpHealthReason(runtime.reason)"></p>
+            <div class="flex items-center justify-between gap-3"><p class="font-semibold" x-text="'PHP-FPM ' + runtime.version"></p><span :class="healthBadge(runtime.state)" x-text="healthLabel(runtime.state)"></span></div>
+            <p class="form-hint" x-text="phpHealthSummary(runtime)"></p>
+            <details x-show="['ok', 'warning'].includes(runtime.state) && runtime.extensions?.length" class="mt-3">
+                <summary class="text-sm cursor-pointer">{{t .Lang "software.php_extensions"}}</summary>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3"><template x-for="extension in healthExtensions(runtime.version)" :key="extension.name"><div class="flex items-center justify-between gap-3 border border-gray-700 rounded p-3"><span class="text-sm"><span x-text="extension.name"></span><small class="text-gray-500 ml-2" x-text="t(extension.importance === 'required' ? 'software.extension_required' : 'software.extension_recommended')"></small></span><span :class="healthBadge(extension.state)" x-text="healthLabel(extension.state)"></span></div></template></div>
+                <p class="form-hint mt-3">{{t .Lang "software.opcache_metrics_scope"}}</p>
+            </details>
         </div></template>
-        <div x-show="health?.backup"><p class="text-sm" x-text="healthLabel(health?.backup?.status)"></p><p class="form-hint" x-text="missingDependencyPackages()"></p><button class="btn-secondary mt-2" @click="installBackupDependencies()" :disabled="dependencyInstalling || healthLoading">{{t .Lang "software.backup_dependencies_install"}}</button></div>
+        <div x-show="health" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div x-show="health?.backup" class="border border-gray-700 rounded p-4">
+                <div class="flex items-center justify-between gap-3"><h4 class="font-semibold">{{t .Lang "software.backup_dependencies"}}</h4><span :class="healthBadge(health?.backup?.status)" x-text="healthLabel(health?.backup?.status)"></span></div>
+                <p class="form-hint" x-text="backupModeHelp()"></p>
+                <p x-show="health?.backup?.configuration_status === 'error'" class="form-hint">{{t .Lang "software.backup_configuration_unknown"}}</p>
+                <details class="mt-3">
+                    <summary class="text-sm cursor-pointer">{{t .Lang "software.backup_dependency_details"}}</summary>
+                    <template x-for="dependency in (health?.backup?.dependencies || [])" :key="dependency.id"><div class="flex items-center justify-between gap-3 mt-2 text-sm"><span><span x-text="dependency.name"></span><small class="text-gray-500 ml-2" x-text="t(dependency.required ? 'software.dependency_required' : 'software.dependency_optional')"></small></span><span :class="healthBadge(dependency.status === 'missing' && !dependency.required ? 'optional' : dependency.status)" x-text="dependency.status === 'missing' && !dependency.required ? t('software.dependency_optional_missing') : healthLabel(dependency.status)"></span></div></template>
+                </details>
+                <div x-show="canInstallBackupDependencies()" class="mt-3">
+                    <p class="form-hint" x-text="t('software.backup_packages_missing', { packages: missingDependencyPackages().join(', ') })"></p>
+                    <button type="button" class="btn-secondary mt-2" @click="installBackupDependencies()" :disabled="dependencyInstalling || healthLoading" x-text="t(dependencyInstalling ? 'software.installing' : 'software.backup_dependencies_install')"></button>
+                </div>
+            </div>
+            <div x-show="health?.cron" class="border border-gray-700 rounded p-4">
+                <div class="flex items-center justify-between gap-3"><h4 class="font-semibold">{{t .Lang "software.cron_health"}}</h4><span :class="healthBadge(health?.cron?.state)" x-text="healthLabel(health?.cron?.state)"></span></div>
+                <p class="form-hint">{{t .Lang "software.cron_health_help"}}</p>
+                <p class="text-sm mt-3"><span>{{t .Lang "software.cron_autostart"}}：</span><span x-text="healthLabel(health?.cron?.enabled)"></span></p>
+                <p x-show="health?.cron?.state !== 'running'" class="form-hint">{{t .Lang "software.cron_attention"}}</p>
+                <a href="/{{.RandomSuffix}}/cron" class="text-xs text-blue-400 hover:underline mt-3 inline-block">{{t .Lang "software.cron_view_tasks"}}</a>
+            </div>
+        </div>
+        <p x-show="health?.checked_at" class="form-hint mt-3" role="status" x-text="t('software.health_checked_at', { time: healthCheckedAt() })"></p>
     </section>
     <div x-data="processGuard()" x-init="deferTask(() => fetchStatus(), 700)" class="card mb-6">
         <div class="flex items-center justify-between mb-3">
@@ -486,7 +513,7 @@ healthExtensions(version) {
             });
         },
 healthLabel(state) {
-            const keys = { ok: 'software.health_ready', installed: 'software.health_ready', loaded: 'software.health_loaded', warning: 'software.health_attention',
+            const keys = { ok: 'software.health_ready', installed: 'software.health_ready', loaded: 'software.health_loaded', warning: 'software.health_attention', not_installed: 'software.dependency_optional_missing',
                 missing: 'software.health_missing', error: 'software.health_failed', checking: 'software.health_checking', running: 'software.running', stopped: 'software.stopped', enabled: 'software.health_enabled', disabled: 'software.health_disabled', static: 'software.health_static' };
             return t(keys[state] || 'software.health_unknown');
         },
@@ -495,7 +522,17 @@ healthBadge(state) {
                 ['warning', 'missing', 'stopped', 'error'].includes(state) ? 'badge-warning text-xs' : 'badge-info text-xs';
         },
 phpHealthReason(reason) {
-            return t(reason === 'configuration_unavailable' || reason === 'configuration_mismatch' ? 'software.php_configuration_unknown' : 'software.php_probe_unknown');
+            const keys = { configuration_unavailable: 'software.php_configuration_unknown', configuration_mismatch: 'software.php_configuration_unknown',
+                probe_timeout: 'software.php_probe_timeout', probe_canceled: 'software.php_probe_canceled', untrusted_runtime: 'software.php_runtime_untrusted',
+                runtime_mismatch: 'software.php_runtime_mismatch', invalid_output: 'software.php_probe_invalid', extensions_missing: 'software.php_recommended_missing',
+                opcache_disabled: 'software.php_opcache_disabled', not_installed: 'software.php_not_installed', unsupported_runtime: 'software.php_runtime_mismatch' };
+            return t(keys[reason] || 'software.php_probe_unknown');
+        },
+phpHealthSummary(runtime) {
+            if (!['ok', 'warning'].includes(runtime.state)) return this.phpHealthReason(runtime.reason);
+            if (runtime.missing_required > 0) return t('software.php_required_missing', { count: runtime.missing_required });
+            if (runtime.missing_recommended > 0) return t('software.php_recommended_missing', { count: runtime.missing_recommended });
+            return t(runtime.reason === 'opcache_disabled' ? 'software.php_opcache_disabled' : 'software.php_extensions_ready');
         },
 opcacheValue(version, key) {
             const value = this.runtimeHealth(version).opcache?.[key];
@@ -513,6 +550,9 @@ missingDependencyPackages() {
             return [...new Set((backup?.dependencies || []).filter(dependency =>
                 dependency.required && dependency.status === 'missing' && (backup?.missing_required || []).includes(dependency.id)
             ).map(dependency => dependency.package))];
+        },
+canInstallBackupDependencies() {
+            return !this.healthError && this.health?.backup?.configuration_status === 'ok' && this.missingDependencyPackages().length > 0;
         },
 healthCheckedAt() {
             const time = new Date(this.health?.checked_at);
@@ -533,7 +573,7 @@ async fetchHealth(fresh = false) {
             finally { if (current()) { this.healthLoading = false; this.healthController = null; } }
         },
 async installBackupDependencies() {
-            if (this.disposed || this.dependencyInstalling || this.healthLoading || !this.missingDependencyPackages().length || this.health?.backup?.configuration_status !== 'ok') return;
+            if (this.disposed || this.dependencyInstalling || this.healthLoading || !this.canInstallBackupDependencies()) return;
             if (!await confirmModal(t('software.backup_dependencies_install_confirm', { packages: this.missingDependencyPackages().join(', ') }))) return;
             if (this.disposed || this.dependencyInstalling) return;
             this.dependencyInstalling = true;
