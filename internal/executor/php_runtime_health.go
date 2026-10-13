@@ -240,7 +240,7 @@ func parsePHPFPMHealthOutput(version, iniPath, scanDir string, output []byte) PH
 	}
 	// PHP can return zero even when an extension failed during startup. Such a
 	// result is not sufficient evidence that the remaining modules are missing.
-	for _, marker := range []string{"PHP Warning:", "PHP Fatal error:", "PHP Parse error:", "Unable to load dynamic library", "Startup Failed =>"} {
+	for _, marker := range []string{"PHP Warning:", "PHP Fatal error:", "PHP Parse error:", "Unable to load dynamic library"} {
 		if strings.Contains(text, marker) {
 			health.Reason = "probe_failed"
 			return health
@@ -277,6 +277,15 @@ func parsePHPFPMHealthOutput(version, iniPath, scanDir string, output []byte) PH
 		filepath.Clean(value("Scan this dir for additional .ini files")) != filepath.Clean(scanDir) {
 		health.Reason = "configuration_mismatch"
 		return health
+	}
+	if failure := value("Startup Failed"); failure != "" {
+		cliEnabled := phpFPMHealthBool(value("opcache.enable_cli"))
+		// A CLI probe can load OPcache while its CLI cache is intentionally off.
+		// This says nothing about the cache used by running FPM workers.
+		if failure != "Opcode Caching is disabled for CLI" || cliEnabled == nil || *cliEnabled {
+			health.Reason = "probe_failed"
+			return health
+		}
 	}
 	// Modules must appear in phpinfo's module section, rather than in a
 	// Configure Command or an ini directive naming an unloaded extension.
