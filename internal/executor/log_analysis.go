@@ -605,6 +605,10 @@ func sanitizeLogAnalysisAITextKeepingIPs(value string) string {
 	// can contain multiple cookie pairs, so redact the complete value first.
 	value = logAnalysisQuotedSecretPattern.ReplaceAllStringFunc(value, func(match string) string {
 		parts := logAnalysisQuotedSecretPattern.FindStringSubmatch(match)
+		plain := parts[2][1 : len(parts[2])-1]
+		if plain == "redacted" || plain == "[redacted]" {
+			return match
+		}
 		quote := parts[2][:1]
 		return parts[1] + quote + "[redacted]" + quote
 	})

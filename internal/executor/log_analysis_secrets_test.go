@@ -36,3 +36,26 @@ func TestLogAnalysisRedactsCompleteCredentialValuesBeforeAI(t *testing.T) {
 		t.Fatalf("non-credential evidence changed: %q", got)
 	}
 }
+
+func TestLogAnalysisPreservesExistingRedactionMarkers(t *testing.T) {
+	for _, input := range []string{
+		`{"contains_db_password": "redacted", "token": "[redacted]"}`,
+		`{'password':'redacted','api_key':'[redacted]'}`,
+		`password=redacted token=[redacted]`,
+	} {
+		got := input
+		for pass := 0; pass < 3; pass++ {
+			got = sanitizeLogAnalysisAITextKeepingIPs(got)
+			if got != input {
+				t.Fatalf("existing safe marker changed on pass %d: %q -> %q", pass, input, got)
+			}
+		}
+	}
+	for _, secret := range []string{"redacted-actual-secret", "[redacted]actual-secret"} {
+		input := `{"contains_db_password": "redacted", "password": "` + secret + `"}`
+		got := sanitizeLogAnalysisAITextKeepingIPs(input)
+		if strings.Contains(got, secret) || !strings.Contains(got, `"contains_db_password": "redacted"`) || !strings.Contains(got, `"password": "[redacted]"`) {
+			t.Fatalf("placeholder-like credential was not redacted correctly: %q", got)
+		}
+	}
+}
