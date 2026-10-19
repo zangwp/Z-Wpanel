@@ -162,8 +162,8 @@
                                     <p class="text-xs text-gray-400 font-mono mt-1 break-all"><span class="text-gray-500">{{t .Lang "vps.dns_ipv6"}}:</span> <span x-text="(preset.ipv6 || []).join(', ')"></span></p>
                                 </div>
                                 <div class="flex gap-2 shrink-0">
-                                    <button type="button" class="btn-secondary text-xs" @click="testDNS(preset.id)" :disabled="dnsBusy" x-text="dnsBusy ? '{{t .Lang "vps.dns_testing"}}' : '{{t .Lang "vps.dns_test"}}'"></button>
-                                    <button type="button" class="btn-primary text-xs" @click="applyDNS(preset.id)" :disabled="dnsBusy || !overview.dns?.configurable" x-text="dnsBusy ? '{{t .Lang "vps.swap_working"}}' : '{{t .Lang "vps.dns_apply"}}'"></button>
+                                    <button type="button" class="btn-secondary text-xs" @click="testDNS(preset.id)" :disabled="dnsBusy" x-text="dnsBusy && dnsAction === 'test' && dnsPreset === preset.id ? '{{t .Lang "vps.dns_testing"}}' : '{{t .Lang "vps.dns_test"}}'"></button>
+                                    <button type="button" class="btn-primary text-xs" @click="applyDNS(preset.id)" :disabled="dnsBusy || !overview.dns?.configurable" x-text="dnsBusy && dnsAction === 'apply' && dnsPreset === preset.id ? '{{t .Lang "vps.swap_working"}}' : '{{t .Lang "vps.dns_apply"}}'"></button>
                                 </div>
                             </div>
                         </div>
@@ -292,6 +292,8 @@ b uninstall --all</pre>
 <script>
 function vpsPage() {
     return {
+        dnsPreset: '',
+        dnsAction: '',
         overview: { identity: {}, stats: {}, tuning: {}, services: [], swap: { entries: [], can_manage: false }, dns: { presets: [] } },
         tab:'overview',toolBusy:false,toolMessage:'',toolError:false,ipMode:'',tuningMode:'',localeMode:'',
 loading: false,
@@ -402,6 +404,8 @@ loading: false,
         saveSwappiness() { return this.swapRequest('/vps/swap/swappiness', { method: 'PUT', body: { swappiness: Number(this.swappiness) } }, '{{t .Lang "vps.swap_swappiness_saved"}}'); },
         removeManagedSwap() { return this.swapRequest('/vps/swap', { method: 'DELETE', body: { confirm: this.swapConfirm } }, '{{t .Lang "vps.swap_removed"}}'); },
         async testDNS(preset) {
+            if (this.dnsBusy) return;
+            this.dnsAction = 'test'; this.dnsPreset = preset;
             this.dnsBusy = true; this.dnsMessage = ''; this.dnsMessageError = false;
             try {
                 const response = await api('/vps/dns/test', { method: 'POST', timeout: 30000, body: { preset } });
@@ -409,20 +413,24 @@ loading: false,
                 this.overview.dns = response.data || this.overview.dns;
                 this.dnsMessage = '{{t .Lang "vps.dns_test_ok"}}';
             } catch (error) { this.dnsMessageError = true; this.dnsMessage = error.message || '{{t .Lang "vps.load_failed"}}'; }
-            finally { this.dnsBusy = false; }
+            finally { this.dnsBusy = false; this.dnsAction = ''; this.dnsPreset = ''; }
         },
         async applyDNS(preset) {
-            if (!await confirmModal('{{t .Lang "vps.dns_confirm"}}')) return;
+            if (this.dnsBusy) return;
+            this.dnsAction = 'apply'; this.dnsPreset = preset;
             this.dnsBusy = true; this.dnsMessage = ''; this.dnsMessageError = false;
             try {
+                if (!await confirmModal('{{t .Lang "vps.dns_confirm"}}')) return;
                 const response = await api('/vps/dns', { method: 'PUT', timeout: 60000, body: { preset } });
                 if (!response.success) throw new Error(response.message || '{{t .Lang "vps.load_failed"}}');
                 this.overview.dns = response.data || this.overview.dns;
                 this.dnsMessage = '{{t .Lang "vps.dns_applied"}}';
             } catch (error) { this.dnsMessageError = true; this.dnsMessage = error.message || '{{t .Lang "vps.load_failed"}}'; }
-            finally { this.dnsBusy = false; }
+            finally { this.dnsBusy = false; this.dnsAction = ''; this.dnsPreset = ''; }
         },
         async restoreDNS() {
+            if (this.dnsBusy) return;
+            this.dnsAction = 'restore'; this.dnsPreset = '';
             this.dnsBusy = true; this.dnsMessage = ''; this.dnsMessageError = false;
             try {
                 const response = await api('/vps/dns', { method: 'DELETE', timeout: 60000 });
@@ -430,7 +438,7 @@ loading: false,
                 this.overview.dns = response.data || this.overview.dns;
                 this.dnsMessage = '{{t .Lang "vps.dns_restored"}}';
             } catch (error) { this.dnsMessageError = true; this.dnsMessage = error.message || '{{t .Lang "vps.load_failed"}}'; }
-            finally { this.dnsBusy = false; }
+            finally { this.dnsBusy = false; this.dnsAction = ''; this.dnsPreset = ''; }
         },
         async enableNftablesBoot() {
             if (!await confirmModal('{{t .Lang "vps.nftables_enable_confirm"}}')) return;

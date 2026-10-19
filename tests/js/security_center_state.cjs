@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, '../../web/templates/securit
 const defer = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return { promise, resolve, reject }; };
 const required = { fail2ban_maxretry: '5', fail2ban_findtime: '60', auto_whitelist_enabled: 'true', wp_sqli_block_enabled: 'true', wp_sqli_autoban_enabled: 'true', wp_sqli_ban_threshold: '5', wp_sqli_ban_window_seconds: '600', whitelist_ips: '', ssh_whitelist_ips: '', wp_security_log_whitelist: '', telemetry_enabled: 'false', telemetry_url: '' };
 const rows = values => Object.entries({ ...required, ...values }).map(([skey,svalue]) => ({ skey,svalue }));
-function setup(api, extra={}) { const c = { api, t: key => key, showToast() {}, confirmModal: async()=>true, location:{hash:'#account'}, ...extra }; vm.createContext(c); vm.runInContext(source,c); return { m: c.securitySettings(), c }; }
+function setup(api, extra={}) { const c = { AbortController, setTimeout:()=>1, clearTimeout(){}, api, t: key => key, showToast() {}, confirmModal: async()=>true, location:{hash:'#account'}, ...extra }; vm.createContext(c); vm.runInContext(source,c); return { m: c.securitySettings(), c }; }
 const ok = data => ({ success:true, data });
 
 test('real router security settings unlock the actual page', {skip: !process.env.YUB_SECURITY_SETTINGS_FIXTURE}, async()=>{
@@ -84,7 +84,7 @@ test('CDN deletion snapshots target and locks before confirmation',async()=>{
 });
 
 test('queued whitelist refresh is never reported as a completed list update',async()=>{
- const {m}=setup(async()=>ok({}));m.settingsLoaded=true;await m.refreshWhitelist();assert.equal(m.mutationNotice,'security_center.refresh_queued');
+ const {m}=setup(async url=>ok(url.endsWith('/refresh')?{task_id:'task1',kind:'refresh_whitelist',status:'waiting'}:{task_id:'task1',kind:'refresh_whitelist',status:'running'}));m.settingsLoaded=true;await m.refreshWhitelist();assert.equal(m.whitelistNotice,'security.refresh_running');assert.equal(m.whitelistRefreshing,true);assert.equal(m.settingsSaving,false);assert.equal(m.settingsDisabled(),false);m.destroy();
 });
 
 test('editing another CDN opens its form while built-in Cloudflare remains automatic',async()=>{

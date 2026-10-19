@@ -311,9 +311,9 @@ location ^~ /api/ {
                 <button x-show="fcacheEnabled" @click="clearFCache()" class="text-sm py-1.5 px-3 rounded" style="background-color: #7f1d1d; color: #fca5a5;">{{t .Lang "website.clear_cache"}}</button>
             </div>
             <div x-show="site.site_type === 'wordpress'" id="companion-plugin-controls" class="flex flex-wrap items-center gap-3 mb-3">
-                <button x-show="pluginStatus === 'not_installed'" @click="installPlugin()" :disabled="pluginInstalling || site.file_lock_enabled" class="btn-primary text-sm py-1.5" x-text="pluginInstalling ? t('website.installing') : t('website.install_companion_plugin')"></button>
-                <button x-show="pluginStatus === 'update_available'" @click="installPlugin()" :disabled="pluginInstalling || !!maintenance.window_id || fileLockApplyIncomplete()" class="text-sm py-1.5 px-3 rounded" style="background-color: #166534; color: #bbf7d0;" x-text="pluginInstalling ? t('website.updating') : t('website.update_companion_plugin')"></button>
-                <button x-show="pluginStatus === 'config_missing'" @click="rebuildPluginConfig()" :disabled="pluginInstalling || site.file_lock_enabled" class="text-sm py-1.5 px-3 rounded" style="background-color: #92400e; color: #fef3c7;" x-text="pluginInstalling ? t('website.rebuilding_plugin_config') : t('website.rebuild_plugin_config')"></button>
+                <button x-show="pluginStatus === 'not_installed'" @click="installPlugin()" :disabled="pluginInstalling || site.file_lock_enabled" class="btn-primary text-sm py-1.5" x-text="pluginAction === 'install' ? t('website.installing') : t('website.install_companion_plugin')"></button>
+                <button x-show="pluginStatus === 'update_available'" @click="installPlugin()" :disabled="pluginInstalling || !!maintenance.window_id || fileLockApplyIncomplete()" class="text-sm py-1.5 px-3 rounded" style="background-color: #166534; color: #bbf7d0;" x-text="pluginAction === 'install' ? t('website.updating') : t('website.update_companion_plugin')"></button>
+                <button x-show="pluginStatus === 'config_missing'" @click="rebuildPluginConfig()" :disabled="pluginInstalling || site.file_lock_enabled" class="text-sm py-1.5 px-3 rounded" style="background-color: #92400e; color: #fef3c7;" x-text="pluginAction === 'rebuild' ? t('website.rebuilding_plugin_config') : t('website.rebuild_plugin_config')"></button>
                 <span x-show="pluginStatus === 'installed'" class="text-xs text-green-400">{{t .Lang "website.companion_active"}}</span>
                 <span x-show="pluginStatus === 'inactive'" class="text-xs text-yellow-300">{{t .Lang "website.companion_inactive"}}</span>
                 <span x-show="pluginStatus === 'unknown' && !pluginStatusLoading" class="text-xs text-gray-400">{{t .Lang "website.companion_unknown"}}</span>
@@ -735,6 +735,32 @@ location ^~ /api/ {
 <script>
 function websiteDetail() {
     return {
+        pluginAction: '',
+        aiAccessReadPending: false,
+        detailFormValues(data) {
+            return {
+                fcacheEnabled: !!data.fastcgi_cache_enabled,
+                fcacheTTL: data.fastcgi_cache_ttl || 300,
+                disableWPUpdates: data.disable_wp_updates || false,
+                disableFileEditing: data.disable_file_editing || false,
+                passwordResetMode: data.password_reset_mode || 'allow',
+                xmlrpcEnabled: data.xmlrpc_enabled || false,
+                disableApplicationPasswords: data.disable_application_passwords || false,
+                wpDebug: data.wp_debug_enabled || false,
+                wpDebugDisplay: data.wp_debug_display || false,
+                wpPostRevisions: data.wp_post_revisions != null ? data.wp_post_revisions : -1,
+                wpMemoryLimit: data.wp_memory_limit || '',
+                logRetentionDays: data.log_retention_days ?? 14,
+                accessLogMode: data.access_log_mode || 'off',
+                monitoringEnabled: data.monitoring_enabled || false,
+                monitoringInterval: data.monitoring_interval || 5,
+                documentRootSubdir: data.document_root_subdir || '',
+                cdnRealIPEnabled: data.cdn_realip_enabled || false,
+                cdnRealIPGroupIDs: (data.cdn_realip_groups || []).map(group => group.id),
+                sslExportEnabled: data.ssl_export_enabled || false,
+                fileLockMode: data.file_lock_mode === 'strict' ? 'strict' : 'standard',
+            };
+        },
 jobStatusLabel(status) {
             const key = { success: 'website.job_success', failed: 'website.job_failed', error: 'website.job_failed', started: 'website.job_started' }[status];
             return key ? t(key) : (status || t('website.job_no_record'));
@@ -751,7 +777,11 @@ async loadSiteJobs() {
             try {
                 const r = await api('/cron');
                 if (!r.success) throw new Error(r.message || t('common.operation_failed'));
-                this.wpCronJobs = (r.data || []).filter(j => j.task_type === 'wp_cron' && Number(j.site_id) === Number(this.site.id)).map(j => ({ ...j, _schedule: j.cron_expression }));
+                this.wpCronJobs = (r.data || []).filter(j => j.task_type === 'wp_cron' && Number(j.site_id) === Number(this.site.id)).map(j => {
+                    const current = this.wpCronJobs.find(job => job.id === j.id);
+                    const schedule = current && current._schedule !== current.cron_expression ? current._schedule : j.cron_expression;
+                    return { ...j, _schedule: schedule };
+                });
                 this.wpCronLoaded = true; this.wpCronError = '';
             } catch(e) { this.wpCronLoaded = false; this.wpCronError = e.message; }
         },
@@ -759,7 +789,10 @@ async saveWPCron(job, enabled) {
             if (this.wpCronBusy) return;
             this.wpCronBusy = true;
             try {
-                await api('/cron/' + job.id, { method: 'PUT', body: { name: job.name, cron_expression: job._schedule, command: this.site.domain, task_type: 'wp_cron', site_id: this.site.id, notify_fail: job.notify_fail, run_as_user: job.run_as_user, enabled } });
+                const schedule = job._schedule;
+                await api('/cron/' + job.id, { method: 'PUT', body: { name: job.name, cron_expression: schedule, command: this.site.domain, task_type: 'wp_cron', site_id: this.site.id, notify_fail: job.notify_fail, run_as_user: job.run_as_user, enabled } });
+                const current = this.wpCronJobs.find(item => item.id === job.id);
+                if (current) { current.cron_expression = schedule; current.enabled = enabled; }
                 showToast(t('settings.saved'), 'success');
             } catch(e) { showToast(e.message, 'error'); }
             finally { await this.loadSiteJobs(); this.wpCronBusy = false; }
@@ -802,10 +835,10 @@ maintenanceSaving: false,
 maintenancePasswordInput: '',
 maintenanceSecretError: false,
 async loadMaintenancePassword() {
-			this.maintenancePasswordInput = ''; this.maintenanceSecretError = false;
+			const before = this.maintenancePasswordInput, siteID = this.site?.id; this.maintenanceSecretError = false;
 			try {
 				const r = await api('/websites/' + this.site.id + '/maintenance/password', {method:'POST', body:{}});
-				this.maintenancePasswordInput = r.data.password;
+				if (this.site?.id === siteID && this.maintenancePasswordInput === before) this.maintenancePasswordInput = r.data.password;
 			} catch (_) { this.maintenanceSecretError = true; }
 		},
 async copyMaintenancePassword() {
@@ -959,6 +992,8 @@ setDetailTab(tab, updateURL = true) {
         },
 async fetchDetail() {
  if(this.detailDestroyed)return;
+ const previousValues = this.site ? this.detailFormValues(this.site) : null;
+ const formAtStart = Object.fromEntries(Object.keys(this.detailFormValues({})).map(key => [key, JSON.stringify(this[key])]));
  this.siteReadController?.abort();const controller=new AbortController(),generation=++this.siteReadGeneration;
  this.siteReadController=controller;this.siteLoadError='';
  const current=()=>!this.detailDestroyed&&!controller.signal.aborted&&generation===this.siteReadGeneration;
@@ -974,27 +1009,13 @@ async fetchDetail() {
 						this.loadMaintenance(true);
 						this.maintenanceTimer = setInterval(() => this.loadMaintenance(), 10000);
 					}
-                    this.fcacheEnabled = r.data.fastcgi_cache_enabled;
-                    this.fcacheTTL = r.data.fastcgi_cache_ttl || 300;
-                    this.disableWPUpdates = r.data.disable_wp_updates || false;
-                    this.savedDisableWPUpdates = this.disableWPUpdates;
-                    this.disableFileEditing = r.data.disable_file_editing || false;
-                    this.savedDisableFileEditing = this.disableFileEditing;
-                    this.passwordResetMode = r.data.password_reset_mode || 'allow';
-                    this.xmlrpcEnabled = r.data.xmlrpc_enabled || false;
-                    this.disableApplicationPasswords = r.data.disable_application_passwords || false;
-                    this.wpDebug = r.data.wp_debug_enabled || false;
-                    this.wpDebugDisplay = r.data.wp_debug_display || false;
-                    this.wpPostRevisions = r.data.wp_post_revisions != null ? r.data.wp_post_revisions : -1;
-                    this.wpMemoryLimit = r.data.wp_memory_limit || '';
-                    this.logRetentionDays = r.data.log_retention_days ?? 14;
-                    this.monitoringEnabled = r.data.monitoring_enabled || false;
-                    this.monitoringInterval = r.data.monitoring_interval || 5;
-                    this.documentRootSubdir = r.data.document_root_subdir || '';
-                    this.cdnRealIPEnabled = r.data.cdn_realip_enabled || false;
-                    this.cdnRealIPGroupIDs = (r.data.cdn_realip_groups || []).map(g => g.id);
-                    this.sslExportEnabled = r.data.ssl_export_enabled || false;
-                    this.fileLockMode = r.data.file_lock_mode === 'strict' ? 'strict' : 'standard';
+                    for (const [key, value] of Object.entries(this.detailFormValues(r.data))) {
+                        const unchanged = JSON.stringify(this[key]) === formAtStart[key];
+                        const pristine = previousValues && formAtStart[key] === JSON.stringify(previousValues[key]);
+                        if (!previousValues || (unchanged && pristine)) this[key] = value;
+                    }
+                    this.savedDisableWPUpdates = r.data.disable_wp_updates || false;
+                    this.savedDisableFileEditing = r.data.disable_file_editing || false;
                     this.fileLockPreview = null;
                 }
             } catch(e) { if(current()){this.siteLoadError=e.message;showToast(t('website.load_failed_with_error', { error: e.message }), 'error');} }
@@ -1012,24 +1033,26 @@ async fetchDetail() {
             }, 400);
         },
 async fetchAIDevelopment() {
-            if (!this.site) return;
-            this.aiAccess.loading = true;
+            if (!this.site || this.aiAccessReadPending || this.detailDestroyed) return;
+            const siteID = this.site.id, initial = !this.aiAccess.loaded;
+            this.aiAccessReadPending = true; this.aiAccess.loading = true;
             try {
-                const r = await api('/websites/' + this.site.id + '/ai-development-access');
-                if (r.success) {
+                const r = await api('/websites/' + siteID + '/ai-development-access');
+                if (r.success && this.site?.id === siteID && !this.detailDestroyed) {
                     const tools = Array.isArray(r.data.tools) ? r.data.tools : [];
                     const wpCLIInstalled = tools.some(tool => tool.id === 'wp-cli' && tool.installed);
                     this.aiAccess = {
                         ...this.aiAccess,
                         ...r.data,
                         tools,
-                        loading: false,
-                        busy: false,
-                        installWPCLI: r.data.status === 'disabled' ? !wpCLIInstalled : false,
-                        installNodeJS: false
+                        loaded: true,
+                        busy: this.aiAccess.busy,
+                        installWPCLI: initial ? r.data.status === 'disabled' && !wpCLIInstalled : this.aiAccess.installWPCLI,
+                        installNodeJS: this.aiAccess.installNodeJS
                     };
                 }
-            } catch(e) { this.aiAccess.loading = false; }
+            } catch (_) {}
+            finally { this.aiAccessReadPending = false; this.aiAccess.loading = false; }
         },
 developmentToolInstalled(id) {
             return Array.isArray(this.aiAccess.tools) && this.aiAccess.tools.some(tool => tool.id === id && tool.installed);
@@ -1485,18 +1508,21 @@ async fetchPluginStatus() {
                 this.pluginStatusLoading = false;
             }
         },
-async installPlugin() {
+async installPlugin(action = 'install') {
+            if (this.pluginInstalling) return;
+            this.pluginAction = action;
             this.pluginInstalling = true;
             try {
                 const r = await api('/websites/' + this.site.id + '/install-plugin', { method: 'POST' });
                 showToast(r.data?.message || t('website.installed'), 'success');
                 await this.fetchPluginStatus();
             } catch(e) { showToast(e.message, 'error'); }
-            this.pluginInstalling = false;
+            this.pluginInstalling = false; this.pluginAction = '';
         },
 async rebuildPluginConfig() {
-            if (!await confirmModal(t('website.rebuild_plugin_config_confirm'))) return;
-            await this.installPlugin();
+            if (this.pluginInstalling) return;
+                        if (!await confirmModal(t('website.rebuild_plugin_config_confirm'))) return;
+            await this.installPlugin('rebuild');
         },
 fileLockStatusText() {
             if (this.site.file_lock_apply_status === 'applying') return t('website.processing');

@@ -214,6 +214,7 @@ func (s *wpInventoryStore) enqueue(ctx context.Context, siteID int, trigger wpIn
 	if err := tx.Commit(); err != nil {
 		return "", false, err
 	}
+	signalWorker(wpInventoryWake)
 	return jobID, created, nil
 }
 
@@ -304,6 +305,9 @@ func (s *wpInventoryStore) enqueueAllEligibleManual(ctx context.Context, request
 			continue
 		}
 		consecutiveFailures = 0
+		if len(chunkAccepted) > 0 {
+			signalWorker(wpInventoryWake)
+		}
 		created += chunkCreated
 		acceptedSiteIDs = append(acceptedSiteIDs, chunkAccepted...)
 	}
@@ -356,6 +360,7 @@ func (s *wpInventoryStore) enqueueEligible(ctx context.Context, siteID int, trig
 	if err := tx.Commit(); err != nil {
 		return wpInventoryJob{}, false, err
 	}
+	signalWorker(wpInventoryWake)
 	return job, created, nil
 }
 
@@ -398,6 +403,7 @@ func (s *wpInventoryStore) enqueueEligibleScheduled(ctx context.Context, siteID 
 	if err := tx.Commit(); err != nil {
 		return "", false, err
 	}
+	signalWorker(wpInventoryWake)
 	return jobID, created, nil
 }
 

@@ -1,5 +1,15 @@
 # 安装身份与升级兼容性
 
+## v2.4.3 到 v2.4.4
+
+通过 `b update` 使用签名安装入口，选择继续/修复安装，同步二进制、管理命令和许可材料。升级保留配置、账号、证书及网站数据；不会主动重置登录凭据或跨系列升级 PHP/MariaDB。
+
+新增数据库升级 1.0.70/1.0.71，分别保存每站每项的最新安全验证和更新产物清理重试状态。旧版本仅在内存中的验证记录无法补回；升级后新的手动验证会保存结果与时间，普通重启无需重复。历史通过不覆盖当前服务异常或已关闭的防护。
+
+过期历史正常情况下最多增加约 30 分钟物理存留；失败会在后续普通周期重试。数据保留天数、采集、通知和封禁频率不变。空闲任务最长 30 秒兜底轮询，面板入队会立即唤醒；更新产物维护采用有上限的分批清理，保留恢复引用。升级前保留面板及密钥备份，完成后用 `b info`、`b status` 确认版本和服务。
+
+The v2.4.4 maintenance release uses the signed installer repair path (`b update`) to update installed assets while preserving configuration, credentials, sites, certificates and existing PHP/database series. Schema 1.0.70/1.0.71 stores bounded latest verification and cleanup-retry metadata. Earlier memory-only observations cannot be restored. Monitoring and protection cadences remain unchanged; delayed physical deletion does not extend the notification eligibility of expired account events.
+
 YUB WPanel 当前支持以下两类操作：
 
 - 在 Debian 13/Trixie 或 Ubuntu 24.04/Noble 的 amd64、arm64 服务器上全新安装；

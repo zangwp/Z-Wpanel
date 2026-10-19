@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.4.4 — 2026-10-19
+
+- Update the release toolchain to Go 1.26.9 and align reviewed network/security dependencies, including x/net v0.60.0, with the patched OLS baseline.
+- Apply loopback and key-format checks before reading companion-plugin bodies, with 64 KiB and 10-second limits. Keep database-account passwords out of process arguments and credential SQL out of client error responses; improve AI log redaction.
+- Persist the latest manual security verification per site/check. Keep current protection facts independent from historical evidence and invalidate only relevant Nginx/PHP-FPM configuration changes. Report unavailable or unsaved verification explicitly.
+- Reduce successful historical cleanup to 30-minute intervals, wake idle WordPress queues on admission, and batch update-artifact maintenance every 15 minutes. Bound OOM reads and log aggregation, and share dashboard history reads without reducing monitoring or protection frequency.
+- Isolate action feedback and refresh only relevant observations while preserving drafts across settings, security, website, database, backup and alert pages. Bound login request waiting and retain the existing authentication requirements.
+- Roll back each newly created website directory immediately on later failure. Validate both account-reset stores before reporting success, compensate detected transaction failures, and surface restart failures.
+
+Upgrade notes: use `b update` and the signed installer's repair mode to synchronize installed assets. Schema upgrades 1.0.70/1.0.71 add bounded verification records and update-cleanup retry state. Earlier memory-only verification cannot be recovered. Existing site files, accounts, PHP/database series and configured protection schedules are retained; no new resident worker or package dependency is added.
+
 ## v2.4.3 — 2026-10-13
 
 - Fix PHP-FPM extension checks treating disabled CLI OPcache as a general startup failure; retain checks for real loading errors and mismatched configuration.

@@ -347,7 +347,7 @@ func writeLicenseArchiveFixture(t *testing.T, path string, versions []string) {
 		{name: "./NOTICE.md", body: "project notice\n"},
 		{name: "./THIRD_PARTY_NOTICES.md", body: "third party notice\n"},
 		{name: "./go-toolchain/LICENSE", body: "go license\n"},
-		{name: "./go-toolchain/VERSION", body: "go1.26.8\n"},
+		{name: "./go-toolchain/VERSION", body: "go1.26.9\n"},
 		{name: "./adminer-6.0.1/LICENSE-APACHE-2.0.txt", body: "apache license\n"},
 		{name: "./adminer-6.0.1/NOTICE.txt", body: "adminer notice\n"},
 	}

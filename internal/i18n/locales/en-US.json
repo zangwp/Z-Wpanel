@@ -1,4 +1,5 @@
 {
+  "20060102": "20060102",
   "anomaly": {
     "title": "Anomaly monitoring",
     "help": "Requires YUB WPanel companion plugin 1.1.18 or later to be installed and active. Checks administrators, application passwords, database persistence objects, published content, and critical WordPress settings hourly or on demand. Alerts only; no automatic site changes.",
@@ -94,7 +95,9 @@
     "code_required": "Enter an authenticator or recovery code",
     "account_security_unavailable": "Account security is temporarily unavailable. Please try again.",
     "session_not_found": "This session has ended or no longer exists.",
-    "invalid_security_request": "Invalid request. Check your input and try again."
+    "invalid_security_request": "Invalid request. Check your input and try again.",
+    "login_timeout": "The login request timed out. Retry; if browser authentication is still waiting, complete or cancel that prompt first.",
+    "gateway_auth_required": "Browser authentication did not pass. Re-enter the browser authentication credentials or reload and retry. This does not indicate an incorrect panel login password."
   },
   "common": {
     "cancel": "Cancel",
@@ -1701,7 +1704,14 @@
     "view_cf_ranges": "View Cloudflare IP ranges",
     "ip_data_loaded": "Current IP data reloaded. Each source retains its own update timestamp.",
     "ip_schedule_on": "Enabled",
-    "ip_schedule_off": "Disabled"
+    "ip_schedule_off": "Disabled",
+    "ip_update_running": "Updating…",
+    "refresh_status_unavailable": "The update result could not be confirmed. Reload the data, or use Check task result when available to check the existing task.",
+    "refresh_completed": "The update task finished. Data and configuration status were reloaded. Some sources may retain cached ranges; check each source's timestamp.",
+    "refresh_completed_status_unavailable": "The update task finished, but current data or configuration status could not be read. Use Reload data to check.",
+    "refresh_running": "Fetching official ranges and applying configuration. This section will refresh when the task finishes.",
+    "refresh_check_result": "Check task result",
+    "refresh_failed": "The update task failed. Check Cloudflare ranges and configuration status, and review the update failure in the operation log before retrying."
   },
   "firewall": {
     "type_sqli_blocked": "SQL injection request rejected",
@@ -3140,10 +3150,10 @@
     "mfa_code_optional": "Authenticator / recovery code",
     "mfa_code_help": "Required when two-factor authentication is enabled; otherwise leave blank.",
     "account_load_failed": "Could not load account settings. Retry before saving.",
-    "mfa_backup_help": "Database backups exclude the two-factor encryption key. Securely back up account-mfa.key separately through your server management channel, and keep the original paired key when migrating."
+    "mfa_backup_help": "Database backups exclude the two-factor encryption key. Securely back up account-mfa.key separately through your server management channel, and keep the original paired key when migrating.",
+    "account_change_in_progress": "An account change is being saved. Wait for it to finish before saving another change."
   },
   "2006-01-02": "2006-01-02",
-  "20060102": "20060102",
   "20060102_150405": "20060102 150405",
   "Cache-Control": "Cache- Control",
   "Content-Disposition": "Content- Disposition",
@@ -3924,7 +3934,7 @@
     "reason_origin_unreachable": "The local website origin could not be reached. Its state is unknown."
   },
   "site_security": {
-    "reason_https_setting_enabled": "HTTPS is enabled; the local certificate and connection have not been verified.",
+    "reason_https_setting_enabled": "HTTPS is enabled. Any previous certificate and connection check is shown in the verification record; this configuration check does not test the connection.",
     "reason_core_application_passwords_disabled": "The isolated core executed the application-password restriction. Third-party plugins and live requests are outside this evidence.",
     "reason_core_file_editor_disabled": "The isolated core denied theme/plugin editing capabilities. Third-party plugins and live requests need separate verification.",
     "reason_core_debug_display_disabled": "The isolated core confirmed WP_DEBUG_DISPLAY is false. Live PHP settings and third-party output require separate checks.",
@@ -3934,7 +3944,7 @@
     "reason_wp_policy_not_confirmed": "WordPress constants or policy could not be confirmed against the settings.",
     "reason_login_audit_not_ready": "The login-audit block, log permissions or PHP log-directory access has not been fully confirmed. Review security logs and services.",
     "reason_not_checked": "This check has not completed.",
-    "reason_configured_not_run": "Configuration was checked; runtime verification has not run.",
+    "reason_configured_not_run": "Configuration was checked. Any previous runtime verification is shown separately in the verification record.",
     "reason_disabled_by_policy": "This restriction or check is not enabled.",
     "reason_not_applicable": "This check does not apply to this website type.",
     "reason_configuration_check_failed": "Configuration could not be confirmed against the website settings. Review settings and logs.",
@@ -3967,10 +3977,10 @@
     "source_wp_login_audit": "Real WordPress login-failure log",
     "source_nginx_security_log": "Trusted Nginx rejection log",
     "source_isolated_wp_core": "Isolated WordPress core runtime check",
-    "summary_help": "States distinguish configuration, application results, runtime components and request evidence. Refresh sends no attacks or incorrect passwords. Only supported items show Verify; others link to settings, checks, alerts or backup records. File protection reports application results, and backups still need a separate restore test.",
+    "summary_help": "Current status and the last manual verification are shown separately. Saved verification records survive normal restarts; they describe the check at the recorded time, not continuous protection. Relevant configuration changes mark the result for rechecking. Verify after changes or when investigating a problem; repeated verification is unnecessary during normal use. Runtime readiness does not prove an attack was blocked. Checks send no attacks or incorrect passwords. Monitoring and backups link to their own results; backups still need a separate restore test.",
     "state_ready": "Runtime components ready",
     "state_runtime_verified": "Core policy verified",
-    "evidence": "Evidence source",
+    "evidence": "Current evidence source",
     "recent_event": "Latest real event",
     "certificate_expiry": "Certificate valid until",
     "collected_at": "Status collected at",
@@ -3984,7 +3994,7 @@
     "rate_limited": "Verification is too frequent. Wait 3 seconds and try again.",
     "site_busy": "Another operation is running for this site. Verify again later.",
     "verification_failed": "Verification could not complete. Try again later.",
-    "summary_compact_help": "Refresh current status. Items with Verify can check their effect; use the right-hand links for monitoring or backup results. Expand an item for its evidence.",
+    "summary_compact_help": "View current status and the last verification. Results remain after a normal restart; recheck after relevant changes or when troubleshooting. Expand an item for its evidence.",
     "details": "Details",
     "status_guide": "Understanding These States",
     "verify_short": "Verify",
@@ -4019,7 +4029,24 @@
     "view_alerts": "Alerts",
     "check_results": "Check & results",
     "view_backups": "Backups",
-    "view_settings": "Settings"
+    "view_settings": "Settings",
+    "verification_save_failed": "The check completed, but its result could not be saved. Retry later to retain the verification record.",
+    "verification_history_unavailable": "Previous verification records are temporarily unavailable. Current configuration checks are still shown.",
+    "last_verification": "Last manual verification",
+    "last_verification_evidence": "Last verification evidence",
+    "verification_applicability": "Current applicability",
+    "history_never_checked": "No manual verification recorded",
+    "history_passed": "Last verification passed",
+    "history_ready": "Last check: components ready",
+    "history_failed": "Last verification failed",
+    "history_incomplete": "Last verification incomplete",
+    "history_configuration_changed": "Relevant configuration changed · Recheck suggested",
+    "history_configuration_unavailable": "Last result saved · Current match unavailable",
+    "verification_result_passed": "Verification passed and recorded.",
+    "verification_result_ready": "Components are ready; request blocking was not tested.",
+    "verification_result_failed": "Verification did not pass.",
+    "verification_result_incomplete": "Verification could not be completed.",
+    "recheck_short": "Recheck"
   },
   "cloudflare_security": {
     "title": "Cloudflare website protection",
