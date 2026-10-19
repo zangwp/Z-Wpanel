@@ -2,15 +2,15 @@ module github.com/zangwp/Z-Wpanel
 
 go 1.26.0
 
-toolchain go1.26.8
+toolchain go1.26.9
 
 require (
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-acme/lego/v4 v4.34.0
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.7
-	golang.org/x/crypto v0.56.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	golang.org/x/crypto v0.57.0
 	modernc.org/sqlite v1.33.1
 )
 
@@ -46,12 +46,12 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0
-	golang.org/x/tools v0.48.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0
+	golang.org/x/text v0.42.0
+	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect

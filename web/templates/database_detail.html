@@ -9,6 +9,7 @@
         <a href="/{{.RandomSuffix}}/databases" class="btn-secondary">{{t .Lang "database.back_to_list"}}</a>
     </div>
 
+    <div x-show="loadError" x-cloak role="alert" class="text-sm text-red-400 mb-4"><span x-text="loadError"></span> <button type="button" @click="fetchDetail()" :disabled="loading" class="btn-secondary text-xs">{{t .Lang "common.retry"}}</button></div>
     <div x-show="loading" class="text-center py-8">
         <div class="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
     </div>
@@ -33,7 +34,7 @@
                 <div class="flex flex-wrap items-center gap-2">
                     <input type="text" x-model="editTablePrefix" class="input-field text-sm font-mono py-1 w-32" placeholder="{{t .Lang "website.table_prefix_placeholder"}}">
                     <button @click="detectTablePrefix()" :disabled="detectingPrefix" class="btn-secondary text-xs" x-text="detectingPrefix ? t('website.detecting') : t('website.auto_detect')"></button>
-                    <button @click="fixWPConfig()" :disabled="dbSubmitting" class="btn-secondary text-xs" x-text="dbSubmitting ? t('website.processing') : t('website.sync_db_info')"></button>
+                    <button @click="fixWPConfig()" :disabled="dbSubmitting" class="btn-secondary text-xs" x-text="dbAction === 'sync' ? t('website.processing') : t('website.sync_db_info')"></button>
                 </div>
                 <p class="text-xs text-gray-500 mt-2">{{t .Lang "website.table_prefix_help"}}</p>
             </div>
@@ -72,9 +73,9 @@
                         <span class="text-xs text-gray-500 mt-1 block">{{t .Lang "database.adminer_database_password_help"}}</span>
                     </label>
                     <div class="flex flex-wrap gap-2">
-                        <button @click="enableAdminer()" :disabled="adminerSubmitting" class="btn-primary text-sm" x-text="adminerSubmitting ? t('database.adminer_starting') : t('database.adminer_enable')"></button>
+                        <button @click="enableAdminer()" :disabled="adminerSubmitting" class="btn-primary text-sm" x-text="adminerAction === 'enable' ? t('database.adminer_starting') : t('database.adminer_enable')"></button>
                         <a x-show="adminerStatus.enabled" :href="panelPrefix() + '/tools/adminer/' + site.id + '/'" target="_blank" rel="noopener" class="btn-secondary text-sm">{{t .Lang "database.adminer_open"}}</a>
-                        <button x-show="adminerStatus.enabled" @click="disableAdminer()" :disabled="adminerSubmitting" class="btn-danger text-sm" x-text="adminerSubmitting ? t('database.adminer_stopping') : t('database.adminer_disable')"></button>
+                        <button x-show="adminerStatus.enabled" @click="disableAdminer()" :disabled="adminerSubmitting" class="btn-danger text-sm" x-text="adminerAction === 'disable' ? t('database.adminer_stopping') : t('database.adminer_disable')"></button>
                     </div>
                 </div>
             </div>
@@ -163,7 +164,7 @@
         <div class="card border border-red-900/70">
             <h3 class="text-lg font-semibold text-red-300 mb-2">{{t .Lang "database.danger_zone"}}</h3>
             <p class="text-sm text-gray-400 mb-4">{{t .Lang "database.clear_warning"}}</p>
-            <button @click="clearDatabase()" :disabled="dbSubmitting || restoreBusy()" class="btn-danger text-sm" x-text="dbSubmitting ? t('website.clearing') : t('website.clear_database')"></button>
+            <button @click="clearDatabase()" :disabled="dbSubmitting || restoreBusy()" class="btn-danger text-sm" x-text="dbAction === 'clear' ? t('website.clearing') : t('website.clear_database')"></button>
         </div>
     </div>
     </template>
@@ -180,7 +181,7 @@
             <p class="text-gray-500 text-xs mt-2 mb-4" x-text="site?.site_type === 'wordpress' ? t('database.wordpress_password_help') : t('database.php_password_help')"></p>
             <div class="flex justify-end gap-2">
                 <button @click="dbPasswordModal = false" class="btn-secondary">{{t .Lang "common.cancel"}}</button>
-                <button @click="changeDBPassword()" :disabled="dbSubmitting" class="btn-primary" x-text="dbSubmitting ? t('website.processing') : t('website.confirm_change')"></button>
+                <button @click="changeDBPassword()" :disabled="dbSubmitting" class="btn-primary" x-text="dbAction === 'password' ? t('website.processing') : t('website.confirm_change')"></button>
             </div>
         </div>
     </div>
@@ -270,6 +271,11 @@
 <script>
 function databaseDetail() {
     return {
+        adminerAction: '',
+        dbPasswordVersion: 0,
+        dbAction: '',
+        detailEpoch: 0,
+        loadError: '',
         site: null,
         loading: true,
         editTablePrefix: '',
@@ -349,17 +355,21 @@ function databaseDetail() {
             if (this.restorePhase === 'waiting') return t('website.restore_waiting');
             return t('website.restore_running_elapsed', { time: this.formatRestoreElapsed() });
         },
-        async fetchDetail() {
-            this.loading = true;
+        async fetchDetail({ refreshSections = true } = {}) {
+            const epoch = ++this.detailEpoch;
+            const prefix = this.editTablePrefix;
+            const prefixDirty = this.site && prefix !== (this.site.table_prefix || '');
+            this.loading = !this.site;
+            this.loadError = '';
             try {
                 const r = await api('/websites/' + this.siteID());
-                if (r.success) {
-                    this.site = r.data;
-                    this.editTablePrefix = r.data.table_prefix || '';
-                    await Promise.all([this.fetchBackups(), this.fetchBackupSettings(), this.fetchAdminerStatus()]);
-                }
-            } catch (e) { showToast(t('website.load_failed_with_error', { error: e.message }), 'error'); }
-            this.loading = false;
+                if (!r.success || !r.data?.id) throw new Error(r.message || t('common.request_failed'));
+                if (epoch !== this.detailEpoch) return;
+                this.site = r.data;
+                if (!prefixDirty && this.editTablePrefix === prefix) this.editTablePrefix = r.data.table_prefix || '';
+                if (refreshSections) await Promise.all([this.fetchBackups(), this.fetchBackupSettings(), this.fetchAdminerStatus()]);
+            } catch (e) { if (epoch === this.detailEpoch) this.loadError = t('website.load_failed_with_error', { error: e.message }); }
+            finally { if (epoch === this.detailEpoch) this.loading = false; }
         },
         visibleBackups() { return this.showAllBackups ? this.backups : this.backups.slice(0, 5); },
         formatDateTime(value) { return new Date(value).toLocaleString(currentLocale()); },
@@ -370,36 +380,47 @@ function databaseDetail() {
             } catch (e) { this.adminerStatus = { enabled: false }; }
         },
         async enableAdminer() {
+            if (this.adminerSubmitting) return;
+            this.adminerAction = 'enable';
             this.adminerSubmitting = true;
             try {
-                const body = { duration_minutes: Number(this.adminerDuration), password: this.adminerPassword };
+                const submittedPassword = this.adminerPassword;
+                const body = { duration_minutes: Number(this.adminerDuration), password: submittedPassword };
                 const r = await api('/websites/' + this.site.id + '/adminer/enable', { method: 'POST', body });
                 this.adminerStatus = r.data || { enabled: true, site_id: this.site.id };
-                this.adminerPassword = '';
+                if (this.adminerPassword === submittedPassword) this.adminerPassword = '';
                 showToast(t('database.adminer_enabled'), 'success');
             } catch (e) { showToast(e.message, 'error'); }
-            this.adminerSubmitting = false;
+            this.adminerSubmitting = false; this.adminerAction = '';
         },
         async disableAdminer() {
+            if (this.adminerSubmitting) return;
+            this.adminerAction = 'disable';
             this.adminerSubmitting = true;
             try {
                 await api('/websites/' + this.site.id + '/adminer/disable', { method: 'POST' });
                 this.adminerStatus = { enabled: false };
                 showToast(t('database.adminer_disabled'), 'success');
             } catch (e) { showToast(e.message, 'error'); }
-            this.adminerSubmitting = false;
+            this.adminerSubmitting = false; this.adminerAction = '';
         },
         async changeDBPassword() {
+            if (!this.site || this.dbSubmitting) return;
+            const password = this.newDBPassword, version = this.dbPasswordVersion;
             this.dbSubmitting = true;
+            this.dbAction = 'password';
             try {
                 const body = {};
-                if (this.newDBPassword) body.new_password = this.newDBPassword;
+                if (password) body.new_password = password;
                 const r = await api('/websites/' + this.site.id + '/db-password', { method: 'PUT', body });
                 showToast(t('website.password_updated', { password: r.data?.new_password || '****' }), 'success');
-                this.dbPasswordModal = false;
-                this.newDBPassword = '';
+                if (version === this.dbPasswordVersion && password === this.newDBPassword) {
+                    this.dbPasswordModal = false;
+                    this.newDBPassword = '';
+                }
             } catch (e) { showToast(e.message, 'error'); }
             this.dbSubmitting = false;
+            this.dbAction = '';
         },
         async detectTablePrefix() {
             this.detectingPrefix = true;
@@ -412,17 +433,22 @@ function databaseDetail() {
             this.detectingPrefix = false;
         },
         async fixWPConfig() {
+            if (!this.site || this.dbSubmitting) return;
+            const prefix = this.editTablePrefix;
             const parts = [t('website.sync_wp_config_base')];
-            if (this.editTablePrefix) parts.push(t('website.sync_wp_config_prefix', { prefix: this.editTablePrefix }));
+            if (prefix) parts.push(t('website.sync_wp_config_prefix', { prefix }));
             if (!await confirmModal(parts.join('') + t('website.confirm_continue'))) return;
+            if (this.dbSubmitting || this.editTablePrefix !== prefix) return;
             this.dbSubmitting = true;
+            this.dbAction = 'sync';
             try {
-                const body = this.editTablePrefix ? { table_prefix: this.editTablePrefix } : {};
+                const body = prefix ? { table_prefix: prefix } : {};
                 const r = await api('/websites/' + this.site.id + '/fix-wp-config', { method: 'POST', body });
                 showToast(r.data?.message || t('website.updated'), 'success');
-                await this.fetchDetail();
+                await this.fetchDetail({ refreshSections: false });
             } catch (e) { showToast(e.message, 'error'); }
             this.dbSubmitting = false;
+            this.dbAction = '';
         },
         async openSiteURLModal() {
             this.siteURLModal = true;
@@ -473,7 +499,7 @@ function databaseDetail() {
                 const r = await api('/websites/' + this.site.id + '/wp-site-urls', { method: 'PUT', body });
                 showToast(r.data?.message || t('website.site_urls_updated'), 'success');
                 this.siteURLModal = false;
-                if (body.sync_panel_domain) await this.fetchDetail();
+                if (body.sync_panel_domain) await this.fetchDetail({ refreshSections: false });
             } catch (e) { showToast(t('website.update_failed_with_error', { error: e.message }), 'error'); }
             this.siteURLSubmitting = false;
         },
@@ -640,13 +666,17 @@ function databaseDetail() {
             if (this.restorePollingActive) throw new Error(t('website.restore_still_running'));
         },
         async clearDatabase() {
+            if (!this.site || this.dbSubmitting || this.restoreBusy()) return;
             if (!await confirmModal(t('website.confirm_clear_database', { db: this.site.db_name }))) return;
+            if (this.dbSubmitting || this.restoreBusy()) return;
             this.dbSubmitting = true;
+            this.dbAction = 'clear';
             try {
                 const r = await api('/websites/' + this.site.id + '/backups/clear-database', { method: 'POST' });
                 showToast(r.data?.message || t('website.database_cleared'), 'success');
             } catch (e) { showToast(e.message, 'error'); }
             this.dbSubmitting = false;
+            this.dbAction = '';
         }
     };
 }

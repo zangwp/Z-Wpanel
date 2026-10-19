@@ -71,10 +71,11 @@ func runMySQLInput(rootPassword, input string, args ...string) error {
 	cmd := runMariaDBManagementCommand(mariaDBClient(), args...)
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+rootPassword)
 	cmd.Stdin = strings.NewReader(input)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	// Account-creation statements contain credentials. Client diagnostics can
+	// echo the input SQL, so retain the process error without exposing stderr.
+	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("mysql: %s", strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("mysql: %w", err)
 	}
 	return nil
 }
@@ -131,19 +132,24 @@ func createMariaDBDatabase(dbName, dbUser, dbPassword string, cfg *config.Config
 	if cfg == nil || !isValidMySQLIdentifier(dbName) || !isValidMySQLIdentifier(dbUser) {
 		return fmt.Errorf("invalid database identity")
 	}
+	if err := validateMariaDBPassword(dbPassword); err != nil {
+		return err
+	}
 	dbUser = strings.ReplaceAll(dbUser, "'", "''")
-	dbPassword = strings.ReplaceAll(dbPassword, "'", "''")
 
 	if err := runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e",
 		fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", dbName)); err != nil {
 		return err
 	}
 
-	// DROP + CREATE 确保密码始终一致，避免 IF NOT EXISTS 下旧用户密码不更新的问题
+	// Recreate the user so an existing account cannot retain an outdated password.
 	runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e",
 		fmt.Sprintf("DROP USER IF EXISTS '%s'@'localhost'", dbUser))
-	if err := runMySQL(cfg.MariaDB.RootPassword, "-u", cfg.MariaDB.RootUser, "-e",
-		fmt.Sprintf("CREATE USER '%s'@'localhost' IDENTIFIED BY '%s'", dbUser, dbPassword)); err != nil {
+	// Use the same literal-password handling as ALTER USER, and disable client
+	// commands for stdin SQL. The password must never appear in process argv.
+	accountSQL := "SET SESSION sql_mode='NO_BACKSLASH_ESCAPES';\n" +
+		fmt.Sprintf("CREATE USER '%s'@'localhost' IDENTIFIED BY '%s';\n", dbUser, strings.ReplaceAll(dbPassword, "'", "''"))
+	if err := runMySQLInput(cfg.MariaDB.RootPassword, accountSQL, databaseImportClientArgs(cfg.MariaDB.RootUser)...); err != nil {
 		return err
 	}
 

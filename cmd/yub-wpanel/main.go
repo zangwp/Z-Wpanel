@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
@@ -250,6 +249,14 @@ func main() {
 	if err := database.RunMigrations(); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
+	if *resetAdmin {
+		if err := resetAllAdmin(cfg, *configPath); err != nil {
+			fmt.Fprintln(os.Stderr, "账号重置失败:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// 先更新插件包，确保后续迁移复制的是最新版本
 	executor.EnsureCacheHelperPlugin(web.PluginFS)
 	if err := database.RunUpgrades(); err != nil {
@@ -277,11 +284,6 @@ func main() {
 	executor.SetAIDevelopmentPanelVersion(Version)
 	if err := aiDevelopmentService.RefreshEnabledHandoffs(context.Background()); err != nil {
 		log.Printf("AI 开发服务器交接文档刷新失败: %v", err)
-	}
-
-	if *resetAdmin {
-		resetAllAdmin(cfg, *configPath)
-		return
 	}
 
 	if *refreshWhitelist {
@@ -638,86 +640,40 @@ func seedAdminUser(cfg *config.Config) {
 	log.Println("管理员用户已从 config.json 初始化")
 }
 
-func resetAllAdmin(cfg *config.Config, configPath string) {
-	username := "wpadmin"
-	webPass := randomString(16)
-	basicPass := randomString(16)
-
+func resetAllAdmin(cfg *config.Config, configPath string) error {
+	webPass, err := randomResetPassword(rand.Reader)
+	if err != nil {
+		return err
+	}
+	basicPass, err := randomResetPassword(rand.Reader)
+	if err != nil {
+		return err
+	}
 	webHash, err := bcrypt.GenerateFromPassword([]byte(webPass), 12)
 	if err != nil {
-		fmt.Printf("错误: 密码加密失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("密码加密失败: %w", err)
 	}
 	basicHash, err := bcrypt.GenerateFromPassword([]byte(basicPass), 12)
 	if err != nil {
-		fmt.Printf("错误: 密码加密失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("密码加密失败: %w", err)
 	}
-
-	// Update SQLite (Web login)
-	db := database.GetDB()
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-	if count == 0 {
-		_, err = db.Exec("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)", username, string(webHash))
-	} else {
-		_, err = db.Exec("UPDATE admin_users SET username = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-			username, string(webHash))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	credentials := administratorResetCredentials{"wpadmin", string(webHash), string(basicHash)}
+	if err := persistAdministratorReset(ctx, database.GetDB(), configPath, credentials, writeAdministratorResetConfig); err != nil {
+		return err
 	}
-	if err != nil {
-		fmt.Printf("错误: 更新数据库失败: %v\n", err)
-		os.Exit(1)
+	fmt.Println("\n账号凭据已保存，用户名：wpadmin")
+	fmt.Printf("浏览器认证（Basic Auth）密码：%s\n", basicPass)
+	fmt.Printf("面板网页登录密码：%s\n", webPass)
+	fmt.Println("请保存两组密码；登录后可在面板设置中修改。")
+	restartCtx, restartCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer restartCancel()
+	if err := exec.CommandContext(restartCtx, "systemctl", "restart", "yub-wpanel").Run(); err != nil {
+		return fmt.Errorf("新凭据已保存，但面板重启失败；请执行 b restart 后使用新凭据: %w", err)
 	}
-
-	// Update config.json (BasicAuth)
-	data, err := os.ReadFile(configPath)
-	if err == nil {
-		var cfgMap map[string]map[string]interface{}
-		if json.Unmarshal(data, &cfgMap) == nil {
-			if ba, ok := cfgMap["basic_auth"]; ok {
-				ba["username"] = username
-				ba["password_hash"] = string(basicHash)
-			}
-			if admin, ok := cfgMap["admin"]; ok {
-				admin["username"] = username
-				admin["password_hash"] = string(webHash)
-			}
-			if newData, err := json.MarshalIndent(cfgMap, "", "  "); err == nil {
-				if err := os.WriteFile(configPath, newData, 0600); err != nil {
-					fmt.Printf("错误: 写入配置文件失败: %v\n", err)
-					fmt.Println("BasicAuth 密码未更新，请检查配置文件权限")
-					os.Exit(1)
-				}
-			}
-		}
-	}
-
-	fmt.Println("")
-	fmt.Println("═══ 管理员账号已重置 ═══")
-	fmt.Println("")
-	fmt.Println("已将 BasicAuth 和面板 Web 登录的用户名统一修改为 wpadmin")
-	fmt.Println("")
-	fmt.Println("BasicAuth 认证（浏览器弹窗，随机入口第一层）：")
-	fmt.Printf("  密码: %s\n", basicPass)
-	fmt.Println("")
-	fmt.Println("面板 Web 登录（页面表单，BasicAuth 通过后）：")
-	fmt.Printf("  密码: %s\n", webPass)
-	fmt.Println("")
-	fmt.Println("⚠  登录后请在「面板设置」中修改密码")
-	fmt.Println("═══ ═══════════════════ ═══")
-	fmt.Println("")
-	fmt.Println("正在重启面板...")
-	exec.Command("systemctl", "restart", "yub-wpanel").Run()
-}
-
-func randomString(n int) string {
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, n)
-	for i := range result {
-		idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-		result[i] = chars[idx.Int64()]
-	}
-	return string(result)
+	fmt.Println("面板已重启，账号重置完成。")
+	return nil
 }
 
 func getSysTimezone() string {

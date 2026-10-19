@@ -148,7 +148,8 @@ function siteCloudflareSecurity() {
         async cloudflareRequest(action, method, body) {
             if (!this.site?.id || this.cfBusy || this.cfDestroyed) return false;
             const siteID = this.site.id, generation = ++this.cfGeneration, controller = new AbortController();
-            this.cfController = controller; this.cfBusy = action; this.cfError = ''; this.cfNotice = '';
+            const previousConfig = this.cfLoaded ? this.cfConfig : null, formAtStart = {...this.cfForm};
+            this.cfController = controller; this.cfBusy = action; this.cfError = ''; this.cfNotice = ''; this.cfNoticeType = 'info'; this.cfShowAccount = false; this.cfShowToken = false; this.cfShowTechnical = false;
             if (action === 'test') this.cfTestInfo = null;
             try {
                 const endpoint = '/websites/' + siteID + '/cloudflare-security' + (['test','sync'].includes(action) ? '/' + action : '');
@@ -159,13 +160,22 @@ function siteCloudflareSecurity() {
                     if (!response.data || Number(response.data.site_id) !== Number(siteID) || response.data.scope !== 'shared_web_bans' || !this.cloudflareZoneIDValid(response.data.zone_id) || !response.data.zone_id || response.data.coverage_error) throw new Error(response.data?.coverage_error || t('cloudflare_security.invalid_response'));
                     this.cfTestInfo = {zone_id: response.data.zone_id, zone_name: String(response.data.zone_name || ''), website_hostnames: this.cloudflareHostnameList(response.data.website_hostnames)};
                     this.cfNotice = t('cloudflare_security.test_success');
+                    this.cfNoticeType = 'success';
                 }
                 else {
+                    const currentForm = {...this.cfForm};
                     this.applyCloudflareConfig(response.data, siteID);
-                    if (action === 'save') { this.cfToken = ''; this.cfNotice = t('cloudflare_security.saved'); }
+                    if (action === 'load' && previousConfig) {
+                        for (const key of ['enabled','account_id']) {
+                            if (currentForm[key] !== formAtStart[key] || formAtStart[key] !== previousConfig[key]) this.cfForm[key] = currentForm[key];
+                        }
+                    }
+                    if (action === 'save') { this.cfToken = ''; this.cfNotice = t('cloudflare_security.saved'); this.cfNoticeType = 'success'; }
                     if (action === 'sync') {
                         if (this.cloudflareStatus() === 'error') throw new Error(this.cfConfig.last_error || this.cfConfig.coverage_error || t('cloudflare_security.request_failed'));
                         this.cfNotice = !this.cfConfig.enabled && !this.cloudflareBindingLocked() && this.cfConfig.sync_status === 'disabled' ? t('cloudflare_security.rule_removed') : this.cloudflareStatusLabel();
+                        const state = this.cloudflareStatus();
+                        this.cfNoticeType = ['synced', 'ready', 'disabled'].includes(state) ? 'success' : ['rule_missing', 'removal_required'].includes(state) ? 'warning' : 'info';
                     }
                 }
                 return true;

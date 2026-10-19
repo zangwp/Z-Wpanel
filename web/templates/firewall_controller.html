@@ -2,6 +2,7 @@
 <script>
 function firewallManager(initialTab = 'current') {
     return {
+        fileSecurityAction: '',
         activeTab: 'current',
         portView: 'policy',
         bans: [],
@@ -451,9 +452,11 @@ function firewallManager(initialTab = 'current') {
             }
         },
         async refreshFileSecurityEvents(clearFirst = false) {
-            if (clearFirst && !(await confirmModal(t('firewall.confirm_clear_history')))) return;
+            if (this.fileSecurityLoading) return;
+            this.fileSecurityAction = clearFirst ? 'rescan' : 'refresh';
             this.fileSecurityLoading = true;
             try {
+                if (clearFirst && !(await confirmModal(t('firewall.confirm_clear_history')))) return;
                 const url = '/firewall/file-security-events/refresh' + (clearFirst ? '?clear=1' : '');
                 const r = await api(url, { method: 'POST' });
                 if (r.success) {
@@ -462,7 +465,7 @@ function firewallManager(initialTab = 'current') {
                     this.fileSecurityLoaded = true;
                 }
             } catch(e) { showToast(t('firewall.refresh_file_security_failed', { error: e.message }), 'error'); }
-            finally { this.fileSecurityLoading = false; }
+            finally { this.fileSecurityLoading = false; this.fileSecurityAction = ''; }
         },
         goPage(p) {
             if (p < 1 || p > this.totalPages) return;

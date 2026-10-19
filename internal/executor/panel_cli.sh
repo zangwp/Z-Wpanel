@@ -894,7 +894,7 @@ case "${1:-}" in
         fi
         ;;
     password)
-        $BIN --reset-admin
+        "$BIN" --reset-admin --config "$CFG"
         ;;
     info)
         "$BIN" --info --config "$CFG"

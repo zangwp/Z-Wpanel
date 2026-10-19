@@ -61,7 +61,7 @@
                         <div class="settings-field"><label for="basic-security-code">{{t .Lang "settings.mfa_code_optional"}}</label><input id="basic-security-code" type="text" x-model="pw.basicCode" class="input-field text-sm" autocomplete="one-time-code" maxlength="64" autocapitalize="none" spellcheck="false" aria-describedby="basic-security-code-help"></div>
                     </div>
                     <p id="basic-security-code-help" class="text-xs text-gray-500 mb-3">{{t .Lang "settings.mfa_code_help"}}</p>
-                    <div class="settings-account-action"><button type="submit" :disabled="accountSaving || !accountLoaded" class="btn-primary" x-text="accountSaving ? t('settings.saving') : t('settings.save_basic_auth')"></button></div>
+                    <div class="settings-account-action"><button type="submit" :disabled="accountSaving === 'basic' || !accountLoaded || accountSaved" :aria-disabled="!!accountSaving || !accountLoaded || accountSaved" class="btn-primary" x-text="accountSaving === 'basic' ? t('settings.saving') : t('settings.save_basic_auth')"></button></div>
                 </form>
                 <form class="settings-credentials" aria-labelledby="web-login-heading" @submit.prevent="saveWebAccount()">
                     <h4 id="web-login-heading">{{t .Lang "settings.web_login_title"}}</h4>
@@ -77,7 +77,7 @@
                         <div class="settings-field"><label for="web-security-code">{{t .Lang "settings.mfa_code_optional"}}</label><input id="web-security-code" type="text" x-model="pw.code" class="input-field text-sm" autocomplete="one-time-code" maxlength="64" autocapitalize="none" spellcheck="false" aria-describedby="web-security-code-help"></div>
                     </div>
                     <p id="web-security-code-help" class="text-xs text-gray-500 mb-3">{{t .Lang "settings.mfa_code_help"}}</p>
-                    <div class="settings-account-action"><button type="submit" :disabled="accountSaving || !accountLoaded" class="btn-primary" x-text="accountSaving ? t('settings.saving') : t('settings.save_web_account')"></button></div>
+                    <div class="settings-account-action"><button type="submit" :disabled="accountSaving === 'web' || !accountLoaded || accountSaved" :aria-disabled="!!accountSaving || !accountLoaded || accountSaved" class="btn-primary" x-text="accountSaving === 'web' ? t('settings.saving') : t('settings.save_web_account')"></button></div>
                 </form>
             </div>
             <p class="text-xs text-yellow-400 mt-2" x-show="accountSaved">{{t .Lang "settings.account_saved_logout"}}</p>
@@ -485,6 +485,12 @@
 </div>
 
 <script>
+function mergeSettingsDraft(target, values, baseline, before) {
+    for (const [key, value] of Object.entries(values)) {
+        if (target[key] === before[key] && before[key] === baseline[key]) target[key] = value;
+    }
+}
+
 function settingsSectionActive(component, section) {
     return (typeof component.activeSection === 'undefined' || component.activeSection === section) &&
         (typeof document === 'undefined' || !document.hidden);
@@ -544,6 +550,10 @@ async function settingsRead(component, path, timeout = 15000) {
 
 function wpPackage() {
     return {
+        autoCheckPending: false,
+        autoCheckSaving: false,
+        autoCheckRevision: 0,
+        savedAutoCheckEnabled: null,
         readGeneration: 0, readController: null,
         pkg: { available: false, size_text: '', updated_at: '', version: '' },
         autoCheck: { enabled: true, lastCheckAt: '', lastStatus: '', lastError: '', remoteVersion: '' },
@@ -556,6 +566,8 @@ function wpPackage() {
         init() { this.sectionLoader = watchSettingsSection(this, 'wordpress', () => this.fetchStatus(), () => cancelSettingsRead(this)); },
         destroy() { this.sectionLoader?.destroy(); },
         async fetchStatus() {
+            const revision = this.autoCheckRevision, enabled = this.autoCheck.enabled;
+            const clean = this.savedAutoCheckEnabled === null || enabled === this.savedAutoCheckEnabled;
             this.loadError = '';
             try {
                 const r = await settingsRead(this, '/settings/wp-package');
@@ -563,7 +575,11 @@ function wpPackage() {
                 if (r.success) {
                     this.pkg = r.data;
                     const ac = r.data.auto_check || {};
-                    this.autoCheck.enabled = ac.wp_package_auto_check_enabled !== 'false';
+                    if (revision === this.autoCheckRevision && !this.autoCheckSaving) {
+                        const saved = ac.wp_package_auto_check_enabled !== 'false';
+                        if (clean && this.autoCheck.enabled === enabled) this.autoCheck.enabled = saved;
+                        this.savedAutoCheckEnabled = saved;
+                    }
                     this.autoCheck.lastCheckAt = ac.wp_package_last_check_at || '';
                     this.autoCheck.lastStatus = ac.wp_package_last_check_status || '';
                     this.autoCheck.lastError = ac.wp_package_last_check_error || '';
@@ -583,10 +599,22 @@ function wpPackage() {
             return map[this.autoCheck.lastStatus] ? '(' + map[this.autoCheck.lastStatus] + ')' : '';
         },
         async saveAutoCheck() {
+            if (!this.loaded) return;
+            this.autoCheckRevision++;
+            this.autoCheckPending = true;
+            if (this.autoCheckSaving) return;
+            this.autoCheckSaving = true;
             try {
-                await api('/settings', { method: 'PUT', body: { wp_package_auto_check_enabled: this.autoCheck.enabled ? 'true' : 'false' } });
+                while (this.autoCheckPending) {
+                    this.autoCheckPending = false;
+                    const enabled = this.autoCheck.enabled;
+                    const r = await api('/settings', { method: 'PUT', body: { wp_package_auto_check_enabled: enabled ? 'true' : 'false' } });
+                    if (!r.success) throw new Error(r.message || t('settings.save_failed'));
+                    this.savedAutoCheckEnabled = enabled;
+                }
                 showToast(t('settings.updated'), 'success');
-            } catch(e) { showToast(e.message, 'error'); }
+            } catch(e) { this.autoCheckPending = false; showToast(e.message, 'error'); }
+            finally { this.autoCheckSaving = false; }
         },
         async downloadPkg() {
             this.downloading = true;
@@ -647,6 +675,49 @@ function wpPackage() {
 }
 function panelSettings() {
     return {
+        autoUpdatePending: false,
+        autoUpdateSaving: false,
+        autoUpdateBaseline: null,
+        settingsBaseline: null,
+        settingsReadGeneration: 0,
+        disposed: false,
+        timeStatusController: null,
+        timeStatusGeneration: 0,
+        ntpRefreshTimer: null,
+        async refreshTimeStatus() {
+            if (this.disposed) return false;
+            this.cancelTimeStatusRead();
+            const generation = this.timeStatusGeneration;
+            const controller = typeof AbortController === 'function' ? new AbortController() : null;
+            this.timeStatusController = controller;
+            try {
+                const result = await api('/settings', { silent: true, timeout: 15000, ...(controller ? { signal: controller.signal } : {}) });
+                if (this.disposed || generation !== this.timeStatusGeneration) return false;
+                const data = result.data;
+                if (!result.success || !Number.isFinite(data?.server_time) || data.server_time <= 0 ||
+                    typeof data.ntp_synced !== 'boolean' || typeof data.ntp_enabled !== 'boolean' || typeof data.ntp_service !== 'string') {
+                    throw new Error(result.message || t('common.request_failed'));
+                }
+                // Preserve editable settings; a time read must never replace another form's draft.
+                this.ntpSynced = data.ntp_synced;
+                this.ntpEnabled = data.ntp_enabled;
+                this.ntpService = data.ntp_service;
+                this.serverTimeBase = data.server_time;
+                this.serverTimeFetchedAt = Date.now();
+                this.tickTime();
+                return true;
+            } catch(e) {
+                if (this.disposed || generation !== this.timeStatusGeneration || e.name === 'AbortError' || e.code === 'request_cancelled') return false;
+                throw e;
+            } finally {
+                if (generation === this.timeStatusGeneration) this.timeStatusController = null;
+            }
+        },
+        cancelTimeStatusRead() {
+            this.timeStatusGeneration++;
+            this.timeStatusController?.abort();
+            this.timeStatusController = null;
+        },
         activeSection: 'general',
         panelTitle: 'YUB WPanel',
         username: '',
@@ -665,7 +736,7 @@ function panelSettings() {
         proxyTesting: false,
         proxyResult: '',
         proxyOk: false,
-        accountSaving: false,
+        accountSaving: '',
         accountLoaded: false,
         accountLoadError: '',
         accountSaved: false,
@@ -686,7 +757,11 @@ function panelSettings() {
         timeTimer: null,
         hashListener: null,
         destroy() {
+            this.disposed = true;
             if (this.timeTimer) clearInterval(this.timeTimer);
+            if (this.ntpRefreshTimer !== null) clearTimeout(this.ntpRefreshTimer);
+            this.ntpRefreshTimer = null;
+            this.cancelTimeStatusRead();
             if (this.hashListener) window.removeEventListener('hashchange', this.hashListener);
         },
         initPage() {
@@ -719,20 +794,29 @@ function panelSettings() {
                 : 'px-4 py-2 rounded text-sm text-gray-300 hover:bg-gray-700';
         },
         async fetchSettings() {
+            if (this.accountSaving) return;
+            const generation = ++this.settingsReadGeneration;
+            const before = Object.fromEntries(['panelTitle', 'username', 'basicAuthUser', 'githubProxy', 'timezone', 'hostname'].map(key => [key, this[key]]));
+            const beforeAuto = Object.fromEntries(['enabled', 'mode', 'window', 'delay', 'signatureTimeout'].map(key => [key, this.autoUpdate[key]]));
+            this.settingsBaseline ||= { ...before };
+            this.autoUpdateBaseline ||= { ...beforeAuto };
+            const baseline = { ...this.settingsBaseline }, autoBaseline = { ...this.autoUpdateBaseline };
             this.accountLoaded = false;
             this.accountLoadError = '';
             try {
                 const r = await api('/settings', { timeout: 15000 });
+                if (this.disposed || generation !== this.settingsReadGeneration) return;
                 if (!r.success) throw new Error(r.message || t('settings.account_load_failed'));
                 if (r.success) {
                     if (typeof r.data?.username !== 'string' || !r.data.username || typeof r.data.basic_auth_user !== 'string') throw new Error(t('settings.account_load_failed'));
-                    this.panelTitle = r.data.panel_title || 'YUB WPanel';
-                    this.username = r.data.username || '';
-                    this.originalUsername = this.username;
-                    this.basicAuthUser = r.data.basic_auth_user || '';
-                    this.githubProxy = r.data.github_proxy || '';
-                    this.timezone = r.data.timezone || '';
-                    this.hostname = r.data.hostname || '';
+                    const values = {
+                        panelTitle: r.data.panel_title || 'YUB WPanel', username: r.data.username || '',
+                        basicAuthUser: r.data.basic_auth_user || '', githubProxy: r.data.github_proxy || '',
+                        timezone: r.data.timezone || '', hostname: r.data.hostname || ''
+                    };
+                    mergeSettingsDraft(this, values, baseline, before);
+                    this.settingsBaseline = values;
+                    this.originalUsername = r.data.username;
                     this.ntpSynced = r.data.ntp_synced || false;
                     this.ntpEnabled = r.data.ntp_enabled || false;
                     this.ntpService = r.data.ntp_service || '';
@@ -741,11 +825,13 @@ function panelSettings() {
                         this.serverTimeFetchedAt = Date.now();
                     }
                     const au = r.data.panel_auto_update || {};
-                    this.autoUpdate.enabled = au.panel_auto_update_enabled === 'true';
-                    this.autoUpdate.mode = au.panel_auto_update_mode || 'patch_only';
-                    this.autoUpdate.window = au.panel_auto_update_window || '03:00-05:00';
-                    this.autoUpdate.delay = Number(au.panel_auto_update_release_delay_minutes || 15);
-                    this.autoUpdate.signatureTimeout = Number(au.panel_auto_update_signature_timeout_minutes || 120);
+                    const autoValues = {
+                        enabled: au.panel_auto_update_enabled === 'true', mode: au.panel_auto_update_mode || 'patch_only',
+                        window: au.panel_auto_update_window || '03:00-05:00', delay: Number(au.panel_auto_update_release_delay_minutes || 15),
+                        signatureTimeout: Number(au.panel_auto_update_signature_timeout_minutes || 120)
+                    };
+                    mergeSettingsDraft(this.autoUpdate, autoValues, autoBaseline, beforeAuto);
+                    this.autoUpdateBaseline = autoValues;
                     this.autoUpdate.lastTarget = au.panel_auto_update_last_target_version || '';
                     this.autoUpdate.lastStatus = au.panel_auto_update_last_status || '';
                     this.autoUpdate.lastStage = au.panel_auto_update_last_stage || '';
@@ -754,7 +840,8 @@ function panelSettings() {
                     this.autoUpdate.lastSuccessVersion = au.panel_auto_update_last_success_version || '';
                     this.accountLoaded = true;
                 }
-            } catch(e) { this.accountLoadError = e.message || t('settings.account_load_failed'); }
+            } catch(e) { if (!this.disposed && generation === this.settingsReadGeneration) this.accountLoadError = e.message || t('settings.account_load_failed'); }
+            if (this.disposed || generation !== this.settingsReadGeneration) return;
             this.tickTime();
             if (this.timeTimer) clearInterval(this.timeTimer);
             this.timeTimer = setInterval(() => { if (settingsSectionActive(this, 'general')) this.tickTime(); }, 1000);
@@ -774,25 +861,27 @@ function panelSettings() {
             }
         },
         async saveBasicAuth() {
-            if (!this.accountLoaded || this.accountSaving) return;
+            if (!this.accountLoaded) return;
+            if (this.accountSaving) { showToast(t('settings.account_change_in_progress'), 'info'); return; }
             if (!this.basicAuthUser.trim()) { showToast(t('settings.basic_auth_username_required'), 'error'); return; }
             if (!this.pw.basicCurrent) { showToast(t('settings.current_password_required_for_account'), 'error'); return; }
             if (this.pw.basic && this.pw.basic.length < 8) { showToast(t('settings.basic_auth_password_min_length'), 'error'); return; }
             const body = { basic_auth_user: this.basicAuthUser.trim(), old_password: this.pw.basicCurrent, code: this.pw.basicCode.trim() };
             if (this.pw.basic) body.basic_auth_password = this.pw.basic;
-            this.accountSaving = true;
+            const submitted = { basic: this.pw.basic, basicCurrent: this.pw.basicCurrent, basicCode: this.pw.basicCode };
+            this.accountSaving = 'basic';
             try {
-                const r = await api('/settings', { method: 'PUT', body, allowAuthFailure: true });
+                const r = await api('/settings', { method: 'PUT', body, allowAuthFailure: true, silent: true });
                 if (!r.success) throw new Error(r.message || t('settings.save_failed'));
-                this.pw.basic = '';
-                this.pw.basicCurrent = '';
-                this.pw.basicCode = '';
+                for (const [key, value] of Object.entries(submitted)) if (this.pw[key] === value) this.pw[key] = '';
+                if (this.settingsBaseline) this.settingsBaseline.basicAuthUser = body.basic_auth_user;
                 showToast(t('settings.basic_auth_saved'), 'success');
             } catch(e) { showToast(e.message, 'error'); }
-            this.accountSaving = false;
+            this.accountSaving = '';
         },
         async saveWebAccount() {
-            if (!this.accountLoaded || this.accountSaving) return;
+            if (!this.accountLoaded) return;
+            if (this.accountSaving) { showToast(t('settings.account_change_in_progress'), 'info'); return; }
             const username = this.username.trim();
             const usernameChanged = username !== this.originalUsername;
             const passwordChanged = Boolean(this.pw.new1 || this.pw.new2);
@@ -805,9 +894,9 @@ function panelSettings() {
             }
             const body = { username, old_password: this.pw.old, code: this.pw.code.trim() };
             if (passwordChanged) body.new_password = this.pw.new1;
-            this.accountSaving = true;
+            this.accountSaving = 'web';
             try {
-                const r = await api('/settings', { method: 'PUT', body, allowAuthFailure: true });
+                const r = await api('/settings', { method: 'PUT', body, allowAuthFailure: true, silent: true });
                 if (!r.success) throw new Error(r.message || t('settings.save_failed'));
                 this.pw.old = ''; this.pw.new1 = ''; this.pw.new2 = ''; this.pw.code = '';
                 this.accountSaved = true;
@@ -816,44 +905,77 @@ function panelSettings() {
                     try { await api('/auth/logout', { method: 'POST' }); } catch(e) {}
                     window.location.href = (document.body.dataset.panelPrefix || '') + '/login';
                 }, 1500);
-            } catch(e) { showToast(e.message, 'error'); this.accountSaving = false; }
+            } catch(e) { showToast(e.message, 'error'); this.accountSaving = ''; }
         },
         async syncNTP() {
-            if (this.ntpSyncing) return;
+            if (this.disposed || !this.accountLoaded || this.ntpSyncing) return;
+            if (this.ntpRefreshTimer !== null) clearTimeout(this.ntpRefreshTimer);
+            this.ntpRefreshTimer = null;
+            this.cancelTimeStatusRead();
             this.ntpSyncing = true;
             try {
-                await api('/settings', { method: 'PUT', body: { ntp_sync: true }, timeout: 130000 });
-                await this.fetchSettings();
+                const result = await api('/settings', { method: 'PUT', body: { ntp_sync: true }, timeout: 130000, silent: true });
+                if (this.disposed) return;
+                if (!result.success) throw new Error(result.message || t('common.request_failed'));
+                if (!await this.refreshTimeStatus()) return;
                 showToast(t('settings.time_sync_triggered'), 'success');
-                if (!this.ntpSynced) setTimeout(() => this.fetchSettings(), 5000);
-            } catch(e) { showToast(e.message, 'error'); }
+                if (!this.ntpSynced) {
+                    this.ntpRefreshTimer = setTimeout(async () => {
+                        this.ntpRefreshTimer = null;
+                        try { await this.refreshTimeStatus(); }
+                        catch(e) { if (!this.disposed) showToast(e.message, 'error'); }
+                    }, 5000);
+                }
+            } catch(e) { if (!this.disposed) showToast(e.message, 'error'); }
             finally { this.ntpSyncing = false; }
         },
         async saveBasic() {
+            if (!this.accountLoaded) return;
+            const panelTitle = this.panelTitle;
             try {
-                await api('/settings', { method: 'PUT', body: { panel_title: this.panelTitle } });
+                const r = await api('/settings', { method: 'PUT', body: { panel_title: panelTitle } });
+                if (!r.success) throw new Error(r.message || t('settings.save_failed'));
+                if (this.settingsBaseline) this.settingsBaseline.panelTitle = panelTitle;
                 showToast(t('settings.saved'), 'success');
             } catch(e) { showToast(e.message, 'error'); }
         },
         async saveServerSetting(key, val) {
+            if (!this.accountLoaded) return;
             try {
                 const body = {};
                 body[key] = val;
-                await api('/settings', { method: 'PUT', body });
+                const r = await api('/settings', { method: 'PUT', body });
+                if (!r.success) throw new Error(r.message || t('settings.save_failed'));
+                const field = { github_proxy: 'githubProxy', timezone: 'timezone', hostname: 'hostname' }[key];
+                if (field && this.settingsBaseline) this.settingsBaseline[field] = val;
                 showToast(t('settings.updated'), 'success');
             } catch(e) { showToast(e.message, 'error'); }
         },
         async saveAutoUpdate() {
+            if (!this.accountLoaded) return;
+            this.autoUpdatePending = true;
+            if (this.autoUpdateSaving) return;
+            this.autoUpdateSaving = true;
             try {
-                await api('/settings', { method: 'PUT', body: {
-                    panel_auto_update_enabled: this.autoUpdate.enabled ? 'true' : 'false',
-                    panel_auto_update_mode: this.autoUpdate.mode,
-                    panel_auto_update_window: this.autoUpdate.window,
-                    panel_auto_update_release_delay_minutes: String(this.autoUpdate.delay || 15),
-                    panel_auto_update_signature_timeout_minutes: String(this.autoUpdate.signatureTimeout || 120)
-                } });
+                while (this.autoUpdatePending) {
+                    this.autoUpdatePending = false;
+                    const submitted = {
+                        enabled: this.autoUpdate.enabled, mode: this.autoUpdate.mode, window: this.autoUpdate.window,
+                        delay: Number(this.autoUpdate.delay || 15), signatureTimeout: Number(this.autoUpdate.signatureTimeout || 120)
+                    };
+                    const r = await api('/settings', { method: 'PUT', body: {
+                        panel_auto_update_enabled: submitted.enabled ? 'true' : 'false',
+                        panel_auto_update_mode: submitted.mode,
+                        panel_auto_update_window: submitted.window,
+                        panel_auto_update_release_delay_minutes: String(submitted.delay),
+                        panel_auto_update_signature_timeout_minutes: String(submitted.signatureTimeout)
+                    } });
+                    if (!r.success) throw new Error(r.message || t('settings.save_failed'));
+                    this.autoUpdateBaseline = submitted;
+                }
                 showToast(t('settings.auto_update_saved'), 'success');
-            } catch(e) { showToast(e.message, 'error'); }
+            } catch(e) { this.autoUpdatePending = false; showToast(e.message, 'error'); }
+            finally { this.autoUpdateSaving = false; }
         },
         async testProxy() {
             if (!this.githubProxy) {

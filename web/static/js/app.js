@@ -126,6 +126,11 @@ function api(path, options = {}) {
             // A wrong step-up credential is recoverable in the current form.
             // Missing/expired sessions still redirect even when opted in.
             const stepUpFailure = allowAuthFailure && ['mfa_invalid_code', 'mfa_invalid_password'].includes(data?.error_code);
+            if (resp.status === 401 && /^Basic(?:\s|$)/i.test(resp.headers.get('WWW-Authenticate') || '')) {
+                const err = new Error(t('auth.gateway_auth_required'));
+                err.status = resp.status; err.code = 'gateway_auth_required';
+                throw err;
+            }
             if (resp.status === 401 && path !== '/auth/login' && !stepUpFailure) {
                 window.location.href = prefix + '/login';
                 const err = new Error(t('auth.session_expired'));

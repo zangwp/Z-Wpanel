@@ -118,17 +118,23 @@ resetMFA() {
             },
 async refreshCSRFToken() {
                 const prefix = document.body.dataset.panelPrefix || '';
-                const response = await fetch(prefix + '/api/auth/csrf-token', {
-                    method: 'GET',
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                    headers: { 'Accept': 'application/json' }
-                });
-                const data = await response.json();
-                if (!response.ok || !data.success || !data.data?.token) {
-                    throw new Error(data.message || t('auth.missing_csrf'));
-                }
-                document.querySelector('meta[name="csrf-token"]').content = data.data.token;
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 20000);
+                try {
+                    const response = await fetch(prefix + '/api/auth/csrf-token', {
+                        method: 'GET', credentials: 'same-origin', cache: 'no-store',
+                        signal: controller.signal, headers: { 'Accept': 'application/json' }
+                    });
+                    if (response.status === 401 && /^Basic(?:\s|$)/i.test(response.headers?.get('WWW-Authenticate') || '')) {
+                        throw new Error(t('auth.gateway_auth_required'));
+                    }
+                    const data = await response.json();
+                    if (!response.ok || !data.success || !data.data?.token) throw new Error(data.message || t('auth.missing_csrf'));
+                    document.querySelector('meta[name="csrf-token"]').content = data.data.token;
+                } catch (error) {
+                    if (controller.signal.aborted) throw new Error(t('auth.login_timeout'));
+                    throw error;
+                } finally { clearTimeout(timer); }
             },
 async login() {
                 if (this.loading) return;
@@ -143,6 +149,7 @@ async login() {
                 }
                 this.loading = true;
                 this.error = '';
+                const body = { username: this.username, password: this.password, code: this.code.trim() };
                 try {
                     let resp;
                     for (let attempt = 0; attempt < 2; attempt++) {
@@ -150,8 +157,8 @@ async login() {
                         try {
                             resp = await api('/auth/login', {
                                 method: 'POST',
-                                body: { username: this.username, password: this.password, code: this.code.trim() },
-                                silent: true
+                                body,
+                                silent: true, timeout: 20000
                             });
                             break;
                         } catch (e) {
@@ -172,7 +179,7 @@ async login() {
                         this.loading = false;
                     }
                 } catch (e) {
-                    this.error = e.message || t('auth.connect_failed');
+                    this.error = e.code === 'request_timeout' ? t('auth.login_timeout') : e.message || t('auth.connect_failed');
                     this.loading = false;
                 }
             },

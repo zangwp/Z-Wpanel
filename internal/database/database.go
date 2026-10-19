@@ -87,6 +87,9 @@ func RunMigrations() error {
 	if err := ensureCloudflareSecurityCoverageSchema(); err != nil {
 		return fmt.Errorf("Cloudflare website security migration failed: %w", err)
 	}
+	if err := ensureWPUpdateCleanupTrackingSchema(); err != nil {
+		return fmt.Errorf("WordPress cleanup tracking migration failed: %w", err)
+	}
 	return nil
 }
 

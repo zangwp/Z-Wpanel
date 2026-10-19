@@ -36,7 +36,7 @@ apt-get update && apt-get install -y --no-install-recommends curl wget ca-certif
 
 全新安装使用官方稳定软件源和 PHP 8.5；Ubuntu 26.04 使用原生 PHP 8.5 安全更新包。现有安装保留 PHP 与数据库主版本，不自动跨系列升级。详见[软件与平台策略](docs/software-platforms.md)。
 
-面板仅提供暗主题，保留原有背景配色。升级至 v2.4.0 请使用签名安装入口的修复模式；[升级说明](docs/upgrade-compatibility.md)包含数据库与密钥备份要求。
+面板仅提供暗主题，保留原有背景配色。升级至当前版本请使用签名安装入口的修复模式；[升级说明](docs/upgrade-compatibility.md)包含数据库与密钥备份要求。
 
 ## SSH 快捷命令
 

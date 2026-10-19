@@ -755,6 +755,8 @@ var upgrades = []Upgrade{
 	{Version: "1.0.67", Description: "网站访问与真实认证失败日志独立增量位置", SQL: []string{wpSecuritySourcePositionsSchema}},
 	{Version: "1.0.68", Description: "网站 Cloudflare 防护与域名覆盖状态", Func: ensureCloudflareSecurityCoverageSchema},
 	{Version: "1.0.69", Description: "SSH 独立白名单", SQL: []string{`INSERT OR IGNORE INTO security_settings (skey,svalue,description) VALUES ('ssh_whitelist_ips','','SSH 独立白名单，不继承网站或官方网段')`}},
+	{Version: "1.0.70", Description: "Persist the latest manual website security checks", SQL: []string{siteSecurityVerificationSchema}},
+	{Version: "1.0.71", Description: "Track bounded WordPress update artifact cleanup", Func: ensureWPUpdateCleanupTrackingSchema},
 }
 
 func removeDeprecatedExtensionRecommendation() error {
@@ -1349,4 +1351,8 @@ func RunUpgrades() error {
 	}
 
 	return nil
+}
+
+func ensureWPUpdateCleanupTrackingSchema() error {
+	return EnsureWPUpdateCleanupSchema(DB)
 }

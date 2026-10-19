@@ -1,4 +1,5 @@
 {
+  "20060102": "20060102",
   "anomaly": {
     "title": "异常监控",
     "help": "需要安装并启用 YUB WPanel 配套插件 1.1.18 或更新版本。每小时检查管理员、应用程序密码、数据库持久化对象、已发布内容和 WordPress 关键设置，也可立即检查；仅提醒，不自动修改网站。",
@@ -94,7 +95,9 @@
     "code_required": "请输入动态验证码或恢复码",
     "account_security_unavailable": "账户安全服务暂不可用，请稍后重试",
     "session_not_found": "该会话已结束或不存在",
-    "invalid_security_request": "请求无效，请检查输入后重试"
+    "invalid_security_request": "请求无效，请检查输入后重试",
+    "login_timeout": "登录请求超时，请重试；若浏览器认证窗口仍在等待，请先完成或取消该窗口。",
+    "gateway_auth_required": "浏览器认证未通过，请重新输入浏览器认证账户或刷新页面重试。此提示不代表面板登录密码错误。"
   },
   "common": {
     "cancel": "取消",
@@ -1701,7 +1704,14 @@
     "view_cf_ranges": "查看 Cloudflare IP 网段",
     "ip_data_loaded": "已重新读取当前 IP 数据；更新时间以各数据源记录为准。",
     "ip_schedule_on": "已开启",
-    "ip_schedule_off": "已关闭"
+    "ip_schedule_off": "已关闭",
+    "ip_update_running": "正在更新…",
+    "refresh_status_unavailable": "暂时无法确认更新结果。请重新读取数据；如显示“继续查看结果”，可继续核对已有任务。",
+    "refresh_completed": "更新任务已完成，已重新读取数据与配置状态；部分来源可能沿用缓存，请核对各来源更新时间。",
+    "refresh_completed_status_unavailable": "更新任务已完成，但暂时无法读取最新数据或配置状态。请点击“重新读取数据”核对。",
+    "refresh_running": "正在获取官方网段并同步配置，完成后自动刷新这里的数据。",
+    "refresh_check_result": "继续查看结果",
+    "refresh_failed": "更新任务失败。请核对 Cloudflare 网段与配置状态，并在操作日志中查看更新失败原因后重试。"
   },
   "firewall": {
     "type_sqli_blocked": "SQL 注入请求已拒绝",
@@ -3140,10 +3150,10 @@
     "mfa_code_optional": "动态验证码 / 恢复码",
     "mfa_code_help": "已启用双重验证时必填；未启用时留空。",
     "account_load_failed": "账户设置读取失败，请重试后再保存",
-    "mfa_backup_help": "双因素认证的加密密钥不包含在数据库备份中。请通过服务器管理通道单独安全备份 account-mfa.key，迁移时保留与数据库配对的原密钥。"
+    "mfa_backup_help": "双因素认证的加密密钥不包含在数据库备份中。请通过服务器管理通道单独安全备份 account-mfa.key，迁移时保留与数据库配对的原密钥。",
+    "account_change_in_progress": "已有账户设置正在保存，请完成后再操作。"
   },
   "2006-01-02": "2006-01-02",
-  "20060102": "20060102",
   "20060102_150405": "20060102 150405",
   "Cache-Control": "Cache- Control",
   "Content-Disposition": "Content- Disposition",
@@ -3924,7 +3934,7 @@
     "reason_origin_unreachable": "无法连接本机网站源站，当前状态未知。"
   },
   "site_security": {
-    "reason_https_setting_enabled": "HTTPS 已开启；尚未验证本机证书和连接。",
+    "reason_https_setting_enabled": "HTTPS 已启用。之前的证书与连接检查见验证记录；本次配置核对不测试实际连接。",
     "reason_core_application_passwords_disabled": "隔离核心确认应用程序密码限制已执行；第三方插件与线上请求未包含在此证据中。",
     "reason_core_file_editor_disabled": "隔离核心确认后台主题与插件编辑能力被拒绝；第三方插件与线上请求需分别验证。",
     "reason_core_debug_display_disabled": "隔离核心确认 WP_DEBUG_DISPLAY 为 false；线上 PHP 配置与第三方输出需分别检查。",
@@ -3934,7 +3944,7 @@
     "reason_wp_policy_not_confirmed": "WordPress 配置中的常量或策略未确认与设置一致。",
     "reason_login_audit_not_ready": "登录失败记录配置、日志权限或 PHP 日志目录许可尚未完整确认；请查看安全日志与运行服务。",
     "reason_not_checked": "尚未完成本项检查。",
-    "reason_configured_not_run": "配置已核对，尚未执行本项运行验证。",
+    "reason_configured_not_run": "配置已核对；之前的运行验证结果（如有）单独显示在验证记录中。",
     "reason_disabled_by_policy": "此限制或检查当前未启用。",
     "reason_not_applicable": "此项不适用于当前网站类型。",
     "reason_configuration_check_failed": "无法确认配置与网站设置一致，请查看设置和相关日志。",
@@ -3967,10 +3977,10 @@
     "source_wp_login_audit": "真实 WordPress 登录失败日志",
     "source_nginx_security_log": "带可信标记的 Nginx 拒绝日志",
     "source_isolated_wp_core": "隔离 WordPress 核心运行检查",
-    "summary_help": "状态分别来自配置核对、应用结果、运行组件和请求证据。刷新不会发送攻击或错误密码。仅支持独立验证的项目显示“验证”；其他项目使用设置、检查结果、告警或备份记录入口。文件保护显示应用结果，备份仍需单独恢复测试。",
+    "summary_help": "当前状态与上次手动验证分开显示。验证记录在普通重启后保留，只说明所标时间的检查结果，不代表持续实时保证。相关配置变化时会提示复查；正常使用无需重复验证，可在修改配置或排查问题时主动检查。运行组件就绪不等于已证实拦截攻击。检查不会发送攻击或错误密码。监控与备份从各自入口查看结果，备份仍需单独测试恢复。",
     "state_ready": "运行组件就绪",
     "state_runtime_verified": "核心策略已验证",
-    "evidence": "证据来源",
+    "evidence": "当前依据来源",
     "recent_event": "最近真实事件",
     "certificate_expiry": "证书有效期至",
     "collected_at": "状态采集时间",
@@ -3984,7 +3994,7 @@
     "rate_limited": "验证过于频繁，请等待 3 秒后重试。",
     "site_busy": "网站正在执行其他操作，请稍后验证。",
     "verification_failed": "暂时无法完成验证，请稍后重试。",
-    "summary_compact_help": "刷新查看当前状态；有“验证”的项目可检查效果，监控与备份可从右侧查看结果。展开项目查看依据。",
+    "summary_compact_help": "查看当前状态与上次验证。普通重启后保留记录，相关配置变化或排查问题时再复查；展开项目查看依据。",
     "details": "详情",
     "status_guide": "如何理解这些状态",
     "verify_short": "验证",
@@ -4019,7 +4029,24 @@
     "view_alerts": "查看告警",
     "check_results": "检查与结果",
     "view_backups": "查看备份",
-    "view_settings": "查看设置"
+    "view_settings": "查看设置",
+    "verification_save_failed": "检查已完成，但验证结果未能保存。请稍后重试以保留记录。",
+    "verification_history_unavailable": "暂时无法读取上次验证记录，仍可查看当前配置检查结果。",
+    "last_verification": "上次手动验证",
+    "last_verification_evidence": "上次验证依据",
+    "verification_applicability": "当前适用情况",
+    "history_never_checked": "尚无手动验证记录",
+    "history_passed": "上次验证通过",
+    "history_ready": "上次检查：运行组件就绪",
+    "history_failed": "上次验证未通过",
+    "history_incomplete": "上次验证未完成",
+    "history_configuration_changed": "相关配置已变更，建议复查",
+    "history_configuration_unavailable": "已保留上次结果，暂无法核对当前配置",
+    "verification_result_passed": "验证通过，结果已保存。",
+    "verification_result_ready": "运行组件已就绪，未测试实际拦截。",
+    "verification_result_failed": "本项验证未通过。",
+    "verification_result_incomplete": "本项验证暂未完成。",
+    "recheck_short": "复查"
   },
   "cloudflare_security": {
     "title": "Cloudflare 网站防护",

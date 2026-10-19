@@ -6,7 +6,7 @@ let calls = [], csrfCalls = [], focus = 0, redirects = 0, response;
 const context = {
   t: key => key, document: {body: {dataset: {panelPrefix: '/test'}}, querySelector: () => ({content: ''}), getElementById: () => ({focus() {focus++;}})},
   window: {location: {get href() {return this.target || '';}, set href(value) {this.target = value; redirects++;}}},
-  setTimeout: () => {throw new Error('Successful login must not wait for a timer');}, requestAnimationFrame: fn => fn(),
+  AbortController, setTimeout: () => 1, clearTimeout() {}, requestAnimationFrame: fn => fn(),
   fetch: async (url, options) => {
     assert.equal(url, '/test/api/auth/csrf-token');
     assert.equal(options.method, 'GET');

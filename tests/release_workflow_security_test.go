@@ -20,8 +20,8 @@ func TestReleaseWorkflowSupplyChainBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read go.mod: %v", err)
 	}
-	if !strings.Contains(string(goModBytes), "\ntoolchain go1.26.8\n") {
-		t.Fatal("go.mod must pin the reviewed Go 1.26.8 toolchain")
+	if !strings.Contains(string(goModBytes), "\ntoolchain go1.26.9\n") {
+		t.Fatal("go.mod must pin the reviewed Go 1.26.9 toolchain")
 	}
 
 	distributionBytes, err := os.ReadFile(filepath.Join("..", "internal/config/distribution.go"))
@@ -147,7 +147,7 @@ func TestReleaseWorkflowSupplyChainBoundaries(t *testing.T) {
 	}
 	for _, required := range []string{
 		"workflow_dispatch:",
-		"go-version: '1.26.8'",
+		"go-version: '1.26.9'",
 		`RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}`,
 		`RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}`,
 		`group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}`,
@@ -175,7 +175,7 @@ func TestReleaseWorkflowSupplyChainBoundaries(t *testing.T) {
 		"yub-wpanel-third-party-licenses.tar.gz.sha256.sig",
 		`CGO_ENABLED=0 go list -deps -f '{{with .Module}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}' ./cmd/yub-wpanel`,
 		`required_go_version="$(awk '$1 == "toolchain" { print $2; exit }' go.mod)"`,
-		`test "$required_go_version" = 'go1.26.8'`,
+		`test "$required_go_version" = 'go1.26.9'`,
 		`INSTALLER_RELEASE_VERSION=\"$version\"`,
 		`BOOTSTRAP_RELEASE_VERSION=\"$version\"`,
 		`BOOTSTRAP_DEFAULT_PREFER_CN=0`,
@@ -234,8 +234,8 @@ func TestCIWorkflowUsesExactPinnedGoToolchain(t *testing.T) {
 	if strings.Contains(workflow, "go-version-file:") {
 		t.Fatal("CI workflow must not let setup-go ignore the go.mod toolchain directive")
 	}
-	if strings.Count(workflow, "go-version: '1.26.8'") != 1 {
-		t.Fatal("CI workflow must install exactly Go 1.26.8")
+	if strings.Count(workflow, "go-version: '1.26.9'") != 1 {
+		t.Fatal("CI workflow must install exactly Go 1.26.9")
 	}
 	if !strings.Contains(workflow, "GOTOOLCHAIN: local") {
 		t.Fatal("CI workflow must forbid implicit toolchain downloads")
@@ -271,7 +271,7 @@ func TestThirdPartyBrowserNoticesAreComplete(t *testing.T) {
 		"Copyright (c) Tailwind Labs, Inc.",
 		"Adminer 6.0.1",
 		"Copyright 2007 Jakub Vrana",
-		"Go 1.26.8 runtime and standard library",
+		"Go 1.26.9 runtime and standard library",
 		"Copyright 2009 The Go Authors. All rights reserved.",
 		"Permission is hereby granted, free of charge",
 		"The above copyright notice and this permission notice shall be included",

@@ -21,6 +21,7 @@ const (
 	wpCoreUpdateWorkerPollInterval      = time.Second
 	wpCoreUpdateWorkerHeartbeatInterval = 30 * time.Second
 	wpCoreUpdateWorkerSweepInterval     = 30 * time.Second
+	wpUpdateMaintenanceInterval         = 15 * time.Minute
 )
 
 var wpCoreUpdateWorkerSlot = make(chan struct{}, 1)
@@ -368,25 +369,21 @@ func (w *WPCoreUpdateWorker) run(ctx context.Context, done chan struct{}) {
 		w.sweep(ctx)
 	}()
 	defer func() { <-sweepDone }()
+	idle := newWorkerIdlePoll(w.pollInterval, wpUpdateWake)
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 		if w.processOne(ctx) {
-			// task 刚完成（站点名额释放），立即推进批量派发下一项，不必等 30s sweep。
+			idle.reset()
+			// Dispatch the next batch item as soon as a task frees the site slot.
 			w.tickBatchOrchestrator()
 			continue
 		}
-		// 空闲轮询时也推进一次，保证批量首项在 pollInterval 内被派发。
+		// Enqueue wakes the worker; bounded idle polling and the 30s sweep catch external submissions.
 		w.tickBatchOrchestrator()
-		timer := time.NewTimer(w.pollInterval)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+		if !idle.wait(ctx) {
 			return
-		case <-timer.C:
 		}
 	}
 }
@@ -394,6 +391,7 @@ func (w *WPCoreUpdateWorker) run(ctx context.Context, done chan struct{}) {
 func (w *WPCoreUpdateWorker) sweep(ctx context.Context) {
 	ticker := time.NewTicker(w.sweepInterval)
 	defer ticker.Stop()
+	var nextMaintenance time.Time
 	for {
 		select {
 		case <-ctx.Done():
@@ -402,23 +400,37 @@ func (w *WPCoreUpdateWorker) sweep(ctx context.Context) {
 			_, _ = w.store.recoverCoreExpired(context.Background(), w.now().UTC())
 			_ = w.recoverPluginTasks(context.Background(), true, "lease_expired")
 			_ = w.recoverThemeTasks(context.Background(), true, "lease_expired")
-			if cleaner, ok := w.backups.(interface {
-				cleanupExpiredArtifacts(context.Context, time.Time) error
-			}); ok {
-				_ = cleaner.cleanupExpiredArtifacts(context.Background(), w.now().UTC())
-			}
-			if logCleaner, ok := w.backups.(interface {
-				cleanupExpiredUpdateLogs(context.Context, time.Time) error
-			}); ok {
-				_ = logCleaner.cleanupExpiredUpdateLogs(context.Background(), w.now().UTC())
+			now := w.now().UTC()
+			if !now.Before(nextMaintenance) {
+				nextMaintenance = now.Add(wpUpdateMaintenanceInterval)
+				w.cleanupRetainedArtifacts(ctx, now)
 			}
 			w.tickBatchOrchestrator()
 		}
 	}
 }
 
-// tickBatchOrchestrator 推进批量派发。worker 主循环在每次 processOne 后调用（1s 节奏 +
-// task 完成即触发），sweep 作为 30s 兜底；batchOrchestrator.Tick 内部有互斥锁防并发。
+func (w *WPCoreUpdateWorker) cleanupRetainedArtifacts(ctx context.Context, now time.Time) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if cleaner, ok := w.backups.(interface {
+		cleanupExpiredArtifacts(context.Context, time.Time) error
+	}); ok {
+		if err := cleaner.cleanupExpiredArtifacts(ctx, now); err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+			log.Printf("WordPress 更新产物维护失败: %v", err)
+		}
+	}
+	if cleaner, ok := w.backups.(interface {
+		cleanupExpiredUpdateLogs(context.Context, time.Time) error
+	}); ok {
+		if err := cleaner.cleanupExpiredUpdateLogs(ctx, now); err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+			log.Printf("WordPress 更新日志维护失败: %v", err)
+		}
+	}
+}
+
+// Dispatch on enqueue and completion; bounded idle polling and the lease sweep
+// also discover durable work submitted by another process.
 func (w *WPCoreUpdateWorker) tickBatchOrchestrator() {
 	if w.batchOrchestrator != nil {
 		w.batchOrchestrator.Tick(context.Background())
